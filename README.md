@@ -19,13 +19,16 @@ for anyone who'd rather listen.
 - **Character voices.** Each character gets a man's, woman's, boy's or girl's voice that matches their model, and keeps
   the same voice every time you talk to them.
 - **Link's voice for the choices.** Reply menus ("About the lodge…", "Death Mountain?", "Bye.") are read in a dedicated
-  Link voice. Moving the cursor reads the highlighted choice.
+  Link voice. Only the highlighted choice is read; moving the cursor reads the one you land on.
+- **A rainbow arrow points at the choices.** When a reply menu is waiting for you, a chevron bobs above it, so a player
+  who can't read knows the game is asking them something rather than still talking.
 - **Expression.** Lines ending in `!` sound more excited, questions rise at the end, and `...` pauses.
 - **Filled-in values.** Numbers the game fills in are read too ("Only **7** left to find!").
-- **No repeats.** A question you just heard isn't read again when the conversation comes back to it.
+- **No repeats, but no silence either.** A line you just heard isn't read again when the conversation loops back to it —
+  while talking to someone a second time starts afresh, so you always hear their opening line again.
 - **Leaves the real voice acting alone.** Cutscenes the game voices itself are left to the actors.
-- **Press-next glow.** When a page has been read, a soft rainbow glow pulses around the screen edge, so a player who
-  can't read knows it's time to press for the next page.
+- **Press-next glow.** When a page has been read, a soft rainbow glow shows it's time to press for the next page, so a
+  player who can't read knows to go on. It can pulse round the screen's edge, sit on the box's next arrow, or both.
 - **Settings in the game's Insert menu**, under **Audio**.
 
 ![A number the game fills in, read as part of the line](docs/screenshots/filled-in-number.webp)
@@ -37,10 +40,10 @@ Open the in-game menu (**Insert** or **F1**) and go to the **Audio** tab. Change
 | Setting | Choices | Default | What it does |
 |---|---|---|---|
 | **Read aloud** | On / Off | On | Turns read-aloud on or off. |
-| **Read-aloud voice** | Natural / Windows | Natural | *Natural* is the lifelike voice ([Piper](https://github.com/rhasspy/piper), runs on your PC). *Windows* is the voice built into Windows, used automatically if Piper isn't installed. |
+| **Read-aloud voice** | Natural / Windows / Custom | Natural | *Natural* is the lifelike voice ([Piper](https://github.com/rhasspy/piper), runs on your PC). *Windows* is the voice built into Windows, used automatically if Piper isn't installed. *Custom* uses one Piper voice of your own for every line — put its `.onnx` and `.onnx.json` in the `piper\custom` folder next to `hookshot.exe`. |
 | **Read-aloud speed** | 50% – 200% | 100% | How fast lines are read. |
-| **Press-next glow** | On / Off | On | The rainbow edge glow once a page has been read. |
-| **Link's voice** | Voice 1 – 6 | Voice 1 | Which voice reads Link's choices. Changing it plays a sample. |
+| **Press-next glow** | Off / Screen edge / Arrow / Both | Arrow | Where the rainbow glow shows once a page has been read: round the screen's edge, on the box's next arrow, or both. |
+| **Link's voice** | Voice 1 – 16 | Voice 1 | Which voice reads Link's choices. Changing it plays a sample. |
 | **Link's voice pitch** | Normal, +1 – +6 | +3 | How much higher Link's voice is, in semitones, so he sounds younger. Changing it plays a sample. |
 
 The settings are saved in `hookshot_options.ini` with the rest of Hookshot's options. Starting the game with the

@@ -1,30 +1,35 @@
 diff --git a/gpu/vk/vk_api.h b/gpu/vk/vk_api.h
-index 0612712..577d4b6 100644
+index 06127129..2de78f1f 100644
 --- a/gpu/vk/vk_api.h
 +++ b/gpu/vk/vk_api.h
 @@ -35,6 +35,9 @@ enum { HOS_OPT_HDR_NATIVE = 40, HOS_OPT_HDR_PEAK, HOS_OPT_HDR_WHITE, HOS_OPT_DIS
  /* (HOS_OPT_DISABLE_CAMERA_CENTERING, 45: Controls' movement-follow yaw, host/mouse_native.c: 0 stock, 1 disabled;
     44 is reserved for HOS_OPT_SKIP_TITLE) */
  enum { HOS_OPT_DISABLE_CAMERA_CENTERING = 45 };
-+/* (Hookshot-Narrator) read-aloud, host/oot_voice.c: on 0/1; voice 0 natural (Piper) 1 Windows; speed in percent; glow 0/1;
-+   Link's voice 0..5; Link's pitch in semitones */
++/* (Hookshot-Narrator) read-aloud, host/oot_voice.c: on 0/1; voice 0 natural (Piper) 1 Windows 2 custom; speed in percent;
++   glow 0 off 1 screen edge 2 arrow 3 both; Link's voice 0..15; Link's pitch in semitones */
 +enum { HOS_OPT_VOICE_ON = 70, HOS_OPT_VOICE_KIND, HOS_OPT_VOICE_SPEED, HOS_OPT_VOICE_GLOW, HOS_OPT_LINK_VOICE, HOS_OPT_LINK_PITCH };
  
  /* (hookshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of hookshot_options.ini):
     the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position, SDL's order (the bottom face
 diff --git a/gpu/vk/vk_menu.cpp b/gpu/vk/vk_menu.cpp
-index 9b5a479..5e24df5 100644
+index 9b5a4799..882766d9 100644
 --- a/gpu/vk/vk_menu.cpp
 +++ b/gpu/vk/vk_menu.cpp
-@@ -99,6 +99,17 @@ const char* tx_framegen(int v) {
+@@ -99,6 +99,22 @@ const char* tx_framegen(int v) {
      return t[v];
  }
  const char* tx_onoff(int v) { return v ? "On" : "Off"; }
 +// (Hookshot-Narrator) read-aloud's rows
-+const char* tx_voice_kind(int v) { return v ? "Windows" : "Natural"; }
++const char* tx_glow_kind(int v) {
++    static const char* t[] = {"Off", "Screen edge", "Arrow", "Both"};
++    return t[v < 0 ? 0 : v > 3 ? 3 : v];
++}
++const char* tx_voice_kind(int v) { return v == 2 ? "Custom" : v ? "Windows" : "Natural"; }
 +const char* tx_link_voice(int v) {
-+    static const char* t[] = {"Voice 1", "Voice 2", "Voice 3", "Voice 4", "Voice 5", "Voice 6"};
-+    return t[v < 0 ? 0 : v > 5 ? 5 : v];
++    static char b[16];
++    snprintf(b, sizeof b, "Voice %d", (v < 0 ? 0 : v > 15 ? 15 : v) + 1);
++    return b;
 +}
 +const char* tx_semitones(int v) {
 +    static char b[16];
@@ -34,7 +39,7 @@ index 9b5a479..5e24df5 100644
  const char* tx_profile(int v) { return v ? "Handheld" : "Docked"; }   // (opts.handheld: the Profile row)
  const char* tx_menu_shortcut(int v) {
      // (F1 is never turned off: the menu is always one key away. Esc as well, as a PC game's pause menu)
-@@ -743,6 +754,21 @@ Row rows[] = {
+@@ -743,6 +759,24 @@ Row rows[] = {
       false, true},
      {TAB_AUDIO, "Audio output", &opts.audio_output, 0, 2, 1, tx_audio_output,
       "The speakers the game mixes its sound for. Applies after a restart.", hn_audio_output, true, true},
@@ -42,29 +47,107 @@ index 9b5a479..5e24df5 100644
 +    {TAB_AUDIO, "Read aloud", &opts.voice_on, 0, 1, 1, tx_onoff,
 +     "Characters' lines in dialogue boxes are spoken aloud, for players who cannot read yet. Lines the game voices itself "
 +     "are left to the game.", nullptr, false, true},
-+    {TAB_AUDIO, "Read-aloud voice", &opts.voice_kind, 0, 1, 1, tx_voice_kind,
-+     "Natural: a lifelike voice that runs on this PC (Piper). Windows: the voice built into Windows.", nullptr, false, true},
++    {TAB_AUDIO, "Read-aloud voice", &opts.voice_kind, 0, 2, 1, tx_voice_kind,
++     "Natural: a lifelike voice that runs on this PC (Piper). Windows: the voice built into Windows. Custom: your own Piper "
++     "voice for every line; put its .onnx and .onnx.json in the piper\custom folder next to hookshot.exe.",
++     nullptr, false, true},
 +    {TAB_AUDIO, "Read-aloud speed", &opts.voice_speed, 50, 200, 10, tx_percent,
 +     "How fast lines are read. 100% is the voice's normal pace.", nullptr, false, true},
-+    {TAB_AUDIO, "Press-next glow", &opts.voice_glow, 0, 1, 1, tx_onoff,
-+     "A rainbow glow round the screen once a page has been read, to show it is time to press for the next one.", nullptr,
++    {TAB_AUDIO, "Press-next glow", &opts.voice_glow, 0, 3, 1, tx_glow_kind,
++     "Once a page has been read, a rainbow glow shows it is time to press for the next one: round the screen's edge, on "
++     "the box's next arrow, or both.", nullptr,
 +     false, true},
-+    {TAB_AUDIO, "Link's voice", &opts.link_voice, 0, 5, 1, tx_link_voice,
++    {TAB_AUDIO, "Link's voice", &opts.link_voice, 0, 15, 1, tx_link_voice,
 +     "The voice that reads Link's replies (the choices). Changing it plays a sample.", nullptr, false, true},
 +    {TAB_AUDIO, "Link's voice pitch", &opts.link_pitch, 0, 6, 1, tx_semitones,
 +     "How much higher Link's voice is, in semitones, to sound younger. Changing it plays a sample.", nullptr, false, true},
  
      // Gameplay
      {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff, "Frames per second in the top right corner.", hn_fps,
-@@ -3203,11 +3229,52 @@ void menu_tick() {
+@@ -3203,11 +3237,127 @@ void menu_tick() {
      }
  }
  
 +// (Hookshot-Narrator) Read-aloud's "press next" glow: host/oot_voice.c sets this to 1 when the voice has finished the
-+// dialogue box's page, 0 when the page changes; a rainbow glow then pulses round the picture so a player who cannot read
++// dialogue box's page, 0 when the page changes; a rainbow frame then pulses round the picture so a player who cannot read
 +// knows to go on
 +extern "C" __declspec(dllexport) volatile int mkwvk_voice_glow = 0;
++// (the "press next" arrow's halo: the game's own arrow, centred at the dialogue box's bottom edge, at 50% across and 93.3%
++// down the 16:9 game picture; the picture fitted in the window as the game's is, bars round it. A soft pulsing halo of
++// rainbow light, its colours turning round it)
++static void draw_halo(ImVec2 c, float R0, float ph) {
++    ImDrawList* dl = ImGui::GetForegroundDrawList();
++    const double t = prof_now() / 1e9;
++    const float pulse = 0.75f + 0.25f * (float)std::sin(t * 3.0);
++    const float R = R0 * (0.9f + 0.1f * pulse);
++    const int seg = 48;
++    for (int ring = 6; ring >= 1; ring--) {   // (soft haze: rings fading outward, each a wheel of colours)
++        const float r0 = R * (0.35f + 0.18f * (ring - 1)), r1 = R * (0.35f + 0.18f * ring);
++        const float a = 0.16f * pulse * (1.0f - (ring - 1) / 6.0f);
++        for (int i = 0; i < seg; i++) {
++            const float a0 = 6.2831853f * i / seg, a1 = 6.2831853f * (i + 1) / seg;
++            float r, g, b;
++            ImGui::ColorConvertHSVtoRGB((float)std::fmod((float)i / seg + 10.0 - t * 0.35, 1.0), 0.8f, 1.0f, r, g, b);
++            const ImU32 in = ImGui::GetColorU32(ImVec4(r, g, b, a)), out = ImGui::GetColorU32(ImVec4(r, g, b, a * 0.4f));
++            const ImVec2 p0(c.x + std::cos(a0) * r0, c.y + std::sin(a0) * r0), p1(c.x + std::cos(a1) * r0, c.y + std::sin(a1) * r0);
++            const ImVec2 q0(c.x + std::cos(a0) * r1, c.y + std::sin(a0) * r1), q1(c.x + std::cos(a1) * r1, c.y + std::sin(a1) * r1);
++            dl->PrimReserve(6, 4);
++            const ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
++            const ImDrawIdx base = (ImDrawIdx)dl->_VtxCurrentIdx;
++            dl->PrimWriteVtx(p0, uv, in), dl->PrimWriteVtx(p1, uv, in), dl->PrimWriteVtx(q1, uv, out), dl->PrimWriteVtx(q0, uv, out);
++            dl->PrimWriteIdx(base), dl->PrimWriteIdx((ImDrawIdx)(base + 1)), dl->PrimWriteIdx((ImDrawIdx)(base + 2));
++            dl->PrimWriteIdx(base), dl->PrimWriteIdx((ImDrawIdx)(base + 2)), dl->PrimWriteIdx((ImDrawIdx)(base + 3));
++        }
++    }
++    for (int i = 0; i < seg; i++) {   // (a bright thin ring)
++        const float a0 = 6.2831853f * i / seg, a1 = 6.2831853f * (i + 1) / seg;
++        float r, g, b;
++        ImGui::ColorConvertHSVtoRGB((float)std::fmod((float)i / seg + 10.0 - t * 0.35, 1.0), 0.75f, 1.0f, r, g, b);
++        dl->AddLine(ImVec2(c.x + std::cos(a0) * R, c.y + std::sin(a0) * R), ImVec2(c.x + std::cos(a1) * R, c.y + std::sin(a1) * R),
++                    ImGui::GetColorU32(ImVec4(r, g, b, 0.75f * pulse)), std::max(1.5f, ph * 0.0035f));
++    }
++}
++static void draw_voice_arrow(uint32_t w, uint32_t h) {
++    const float W = (float)w, H = (float)h;
++    const float pw = std::min(W, H * 16.0f / 9.0f), ph = pw * 9.0f / 16.0f;
++    draw_halo(ImVec2(W * 0.5f, (H - ph) * 0.5f + ph * 0.933f), ph * 0.034f, ph);   // (the game's arrow: y 0.920..0.948)
++}
++// (the choice glow: host/oot_voice.c's flag 0x100 | last choice << 4 | cursor right after Link read the choices. One rainbow
++// chevron above the list pointing down at it, bobbing. Measured (lodge guard, 2 and 3 choices): the top row's centre at
++// 0.760 - (M-2) * 0.068 of the picture's height, rows 0.058 tall, the list centred 0.887 across; the tip 0.012 above it)
++static void draw_choice_glow(uint32_t w, uint32_t h, int v) {
++    const int M = ((v >> 4) & 15) + 1;
++    const float W = (float)w, H = (float)h;
++    const float pw = std::min(W, H * 16.0f / 9.0f), ph = pw * 9.0f / 16.0f;
++    const float x0 = (W - pw) * 0.5f, y0 = (H - ph) * 0.5f;
++    const double t = prof_now() / 1e9;
++    const float bob = 0.008f * (float)std::sin(t * 3.0);
++    const float tip = 0.760f - (M - 2) * 0.068f - 0.029f - 0.012f + bob;
++    const ImVec2 T(x0 + pw * 0.887f, y0 + ph * tip);
++    const float hw = pw * 0.025f, ht = ph * 0.045f;
++    ImDrawList* dl = ImGui::GetForegroundDrawList();
++    const float pulse = 0.75f + 0.25f * (float)std::sin(t * 3.0);
++    for (int k = 4; k >= 0; k--) {   // (soft wide strokes under a bright one, each arm's hue turning)
++        const float g = 1.0f + k * 0.12f;
++        const ImVec2 L(T.x - hw * g, T.y - ht * g), Rr(T.x + hw * g, T.y - ht * g), Tk(T.x, T.y + k * ph * 0.004f);
++        float r1, g1, b1, r2, g2, b2;
++        ImGui::ColorConvertHSVtoRGB((float)std::fmod(10.0 - t * 0.35, 1.0), 0.8f, 1.0f, r1, g1, b1);
++        ImGui::ColorConvertHSVtoRGB((float)std::fmod(10.3 - t * 0.35, 1.0), 0.8f, 1.0f, r2, g2, b2);
++        const float a = (k ? 0.16f : 0.9f) * pulse, th = k ? ph * 0.012f : std::max(2.5f, ph * 0.007f);
++        dl->AddLine(L, Tk, ImGui::GetColorU32(ImVec4(r1, g1, b1, a)), th);
++        dl->AddLine(Tk, Rr, ImGui::GetColorU32(ImVec4(r2, g2, b2, a)), th);
++    }
++    static int logged_m;
++    if (M != logged_m) logged_m = M, logf("menu: choice arrow for %d choices: tip at %.3f across, %.3f down%s", M, 0.887, (double)tip - bob,
++                                            M > 3 ? " (extrapolated)" : "");
++}
 +static void draw_voice_glow(uint32_t w, uint32_t h) {
++    const int v = mkwvk_voice_glow;
++    if (v >= 0x100) {
++        if (opts.voice_glow == 2 || opts.voice_glow == 3) draw_choice_glow(w, h, v);
++        if (opts.voice_glow == 2) return;
++    } else if (opts.voice_glow == 2 || opts.voice_glow == 3) draw_voice_arrow(w, h);   // (Arrow, Both)
++    if (opts.voice_glow == 2) return;
 +    // (a soft edge glow: each edge a gradient from the rim, fading to nothing inward, its colour flowing round the frame;
 +    // breathes slowly)
 +    ImDrawList* dl = ImGui::GetForegroundDrawList();
@@ -110,7 +193,7 @@ index 9b5a479..5e24df5 100644
          // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
          // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
          if (prebake_needed(w, h) && ui::begin(w, h)) {
-@@ -3232,6 +3299,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -3232,6 +3382,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
      if (start) draw_startup(c);   // (under the menu)
      if (open) draw_menu(c);
      if (fps) draw_fps(c, open);
@@ -118,7 +201,7 @@ index 9b5a479..5e24df5 100644
      ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
      ui::record(cmd, index, w, h);
  }
-@@ -3239,11 +3307,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -3239,11 +3390,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
  void menu_record_image(VkCommandBuffer cmd, VkImage image, VkImageView view, uint32_t w, uint32_t h) {
      const bool open = open_now.load(std::memory_order_relaxed);
      const bool fps = opts.show_fps && !startup_on.load(std::memory_order_acquire);
@@ -134,7 +217,7 @@ index 9b5a479..5e24df5 100644
      ui::record_to(cmd, image, view, w, h);
  }
 diff --git a/gpu/vk/vk_menu.h b/gpu/vk/vk_menu.h
-index d077bb8..7908508 100644
+index d077bb8a..2c63119e 100644
 --- a/gpu/vk/vk_menu.h
 +++ b/gpu/vk/vk_menu.h
 @@ -50,6 +50,12 @@ struct Options {
@@ -142,16 +225,16 @@ index d077bb8..7908508 100644
      int invert_cam_y = 0; // right-stick camera vertical inversion: 0 normal, 1 inverted
      int rumble = 100;     // the controllers' rumble in percent of the game's: 0 Off, 25 to 150 (host/pad_sdl.c)
 +    int voice_on = 1;             // (Hookshot-Narrator, host/oot_voice.c) read-aloud of dialogue boxes
-+    int voice_kind = 0;           // 0 natural (Piper), 1 Windows' voice
++    int voice_kind = 0;           // 0 natural (Piper), 1 Windows' voice, 2 custom (piper/custom/*.onnx)
 +    int voice_speed = 100;        // percent of the voice's normal pace
-+    int voice_glow = 1;           // the rainbow "press next" glow
++    int voice_glow = 2;           // the rainbow "press next" glow: 0 off, 1 screen edge, 2 arrow, 3 both
 +    int link_voice = 0;           // which of the candidate voices reads Link's choices
 +    int link_pitch = 3;           // semitones Link's voice is raised
      int stick_dead_zone = 0;  // a stick axis below it is 0: 0 XInput's 7849 (~24%), 1..5 5% to 30% (host/nn_hid.c)
      int pad_layout = 0;   // 0 Nintendo (default), 1 Xbox / PC, 2 Swap Face Buttons, 3 Custom
      int gyro = 1;         // motion controls from a pad's gyroscope (host/pad_sdl.c, host/hos_motion.h); on by default
 diff --git a/gpu/vk/vk_replay.cpp b/gpu/vk/vk_replay.cpp
-index 7b2934f..81bb08a 100644
+index 7b2934f6..81bb08af 100644
 --- a/gpu/vk/vk_replay.cpp
 +++ b/gpu/vk/vk_replay.cpp
 @@ -4280,6 +4280,12 @@ void fill_replay_table(MkwVkRenderer& t) {
@@ -168,7 +251,7 @@ index 7b2934f..81bb08a 100644
          return id == 0 ? opts.realtime : id == 1 ? menu_is_open() : id == 2 ? resolution_auto() && !temporal_full_scale() : id == 3 ? (temporal_full_scale() ? 10000 : resolution_scale()) : id == 4 ? opts.pad_background : id == 5 ? opts.text_speed : id == 6 ? opts.mouse_native :
                 id == 7 ? opts.mouse_sens : id == 8 ? opts.mouse_invert : id == 9 ? opts.rumble : id == 16 ? opts.invert_cam_x : id == 17 ? opts.invert_cam_y : id == HOS_OPT_GYRO ? opts.gyro : id == HOS_OPT_GYRO_SENS_X ? opts.gyro_sens_x : id == HOS_OPT_GYRO_SENS_Y ? opts.gyro_sens_y : id == HOS_OPT_GYRO_INV_X ? opts.gyro_inv_x : id == HOS_OPT_GYRO_INV_Y ? opts.gyro_inv_y : id == HOS_OPT_GYRO_DEADZONE ? opts.gyro_deadzone :
 diff --git a/host/hos_main.c b/host/hos_main.c
-index 39b0ff9..f49f007 100644
+index 39b0ff92..f49f0073 100644
 --- a/host/hos_main.c
 +++ b/host/hos_main.c
 @@ -1160,6 +1160,10 @@ void hos_oot_lift_player(Ctx *c, uint64_t actor) {
@@ -183,7 +266,7 @@ index 39b0ff9..f49f007 100644
  #else
      (void)c;
 diff --git a/host/nn_fs.c b/host/nn_fs.c
-index 25840fa..98e0627 100644
+index 25840fa3..98e06270 100644
 --- a/host/nn_fs.c
 +++ b/host/nn_fs.c
 @@ -324,6 +324,16 @@ HLE(_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci) {
@@ -204,7 +287,7 @@ index 25840fa..98e0627 100644
      int want_write = (ARG(2) & 6) != 0;
      if (want_write && !writable) { RET(R_PATH_NOT_FOUND); return; }
 diff --git a/host/oot_text_size.c b/host/oot_text_size.c
-index c747cbd..f900b92 100644
+index c747cbdb..f900b92b 100644
 --- a/host/oot_text_size.c
 +++ b/host/oot_text_size.c
 @@ -47,6 +47,10 @@ void hos_oot_text_pane(Ctx *c, uint64_t anim) {
@@ -220,10 +303,10 @@ index c747cbd..f900b92 100644
         stepped, so that one's text is gone) */
 diff --git a/host/oot_voice.c b/host/oot_voice.c
 new file mode 100644
-index 0000000..52c95c9
+index 00000000..53211354
 --- /dev/null
 +++ b/host/oot_voice.c
-@@ -0,0 +1,731 @@
+@@ -0,0 +1,969 @@
 +/* (local) Read-aloud: the lines characters say in their dialogue box, spoken with Windows' own voice (SAPI), for a player
 +   who cannot read yet.
 +
@@ -248,6 +331,7 @@ index 0000000..52c95c9
 +#include <windows.h>
 +#include <sapi.h>
 +#include <mmsystem.h>
++#include <time.h>
 +#include <stdio.h>
 +
 +static const GUID my_CLSID_SpVoice = {0x96749377, 0x3391, 0x11d2, {0x9e, 0xe3, 0x00, 0xc0, 0x4f, 0x79, 0x73, 0x96}};
@@ -427,12 +511,13 @@ index 0000000..52c95c9
 +}
 +
 +int rx_option(int id, int otherwise);
-+enum { OPT_VOICE_ON = 70, OPT_VOICE_KIND, OPT_VOICE_SPEED, OPT_VOICE_GLOW, OPT_LINK_VOICE, OPT_LINK_PITCH };   /* (gpu/vk/vk_api.h HOS_OPT_VOICE_*) */
++enum { OPT_VOICE_ON = 70, OPT_VOICE_KIND, OPT_VOICE_SPEED, OPT_VOICE_GLOW, OPT_LINK_VOICE, OPT_LINK_PITCH };   /* (76 was the update check: removed, kept free) */   /* (gpu/vk/vk_api.h HOS_OPT_VOICE_*) */
 +
 +/* Piper (piper\ beside the exe: piper.exe and en_US-lessac-medium.onnx), a natural voice run on this PC: one process kept
 +   running, a line of text in on its stdin, the path of the .wav it made out on its stdout; played with PlaySound */
 +typedef struct { HANDLE in, out, proc; int speed; const wchar_t *model; } Piper;
-+static Piper piper_main = {0, 0, 0, 0, L"en_US-lessac-medium.onnx"}, piper_cast = {0, 0, 0, 0, L"en_US-libritts_r-medium.onnx"};
++static Piper piper_main = {0, 0, 0, 0, L"en_US-lessac-medium.onnx"}, piper_cast = {0, 0, 0, 0, L"en_US-libritts_r-medium.onnx"},
++             piper_custom = {0, 0, 0, 0, NULL};   /* (the player's own: the first piper\custom\*.onnx) */
 +static int piper_failed;
 +static wchar_t piper_dir[MAX_PATH];
 +static void piper_stop_process(Piper *pp) {
@@ -633,6 +718,35 @@ index 0000000..52c95c9
 +    }
 +    return 0;
 +}
++/* the whole of +0x28's list, for the log: every named slot in order, and an order-free hash of the set (is it the event's
++   cast, or only who speaks? the carpenters' scene, three actors in one talk, tells) */
++static uint32_t cast_list(uint64_t obj, char *out, int max) {
++    out[0] = 0;
++    const uint64_t arr = in_heap(obj) ? g64(obj + 0x28) : 0;
++    if (!in_heap(arr)) return 0;
++    uint32_t set = 0;
++    int n = 0;
++    for (int i = 0; i < 8; i++) {
++        const uint64_t slot = g64(arr + 0x40 + 0x60 * i);
++        if (!in_heap(slot)) continue;
++        const uint64_t nm = g64(slot + 0x20);
++        if (!in_heap(nm)) continue;
++        char name[64];
++        int k = 0;
++        for (; k < 63; k++) {
++            const char ch = *(const char *)A64_PTR(nm + k);
++            if (!ch || ch < 32 || ch > 126) break;
++            name[k] = ch;
++        }
++        name[k] = 0;
++        if (!k) continue;
++        uint32_t h = 2166136261u;
++        for (int j = 0; j < k; j++) h = (h ^ (uint8_t)name[j]) * 16777619u;
++        if (!strncmp(name, "Npc_", 4) || !strncmp(name, "Enemy_", 6)) set += h;   /* (people only: scenery names vary) */
++        if (n < max - 2) n += snprintf(out + n, (size_t)(max - n), "%s%d:%s", n ? " " : "", i, name);
++    }
++    return set;
++}
 +/* the voice for a speaker: m man, f woman, b boy, g girl; 0 unknown (the main voice) */
 +static char speaker_kind(const char *name) {
 +    static const struct { const char *part; char kind; } named[] = {
@@ -695,17 +809,72 @@ index 0000000..52c95c9
 +   Link (the game's choices) */
 +/* Link's voice for his replies (the choices): one boy voice of the many-voiced model, the same all game. (An adult Link
 +   voice would go here once his age can be read.) */
-+/* (candidates: the brightest of the model's young-sounding voices, by measured pitch; Insert > Audio > Link's voice) */
-+static const short link_voices[] = {220, 292, 144, 0, 224, 112};
++/* (candidates: men's voices of the model, the brightest first, by measured pitch (125-160 Hz; women measured 170+);
++   Insert > Audio > Link's voice; his pitch row raises them) */
++static const short link_voices[] = {632, 604, 508, 436, 476, 320, 852, 828, 668, 88, 308, 456, 28, 728, 816, 284};
 +#define LINK_VOICE link_voices[link_pick()]
 +static int link_pick(void) {
 +    const int i = rx_option(OPT_LINK_VOICE, 0);
-+    return i < 0 ? 0 : i > 5 ? 5 : i;
++    const int last = (int)(sizeof link_voices / sizeof *link_voices) - 1;
++    return i < 0 ? 0 : i > last ? last : i;
 +}
++/* the player's own voice for "Custom": the first .onnx in piper\custom (with its .onnx.json beside it); 0 when none */
++static int custom_model(void) {
++    static wchar_t name[MAX_PATH];
++    static int64_t looked;
++    const int64_t now = hos_now_ns();
++    if (piper_custom.model && piper_custom.proc) return 1;
++    if (looked && now - looked < 10000000000LL) return piper_custom.model != NULL;   /* (looked again every 10 s) */
++    looked = now;
++    if (!piper_dir[0]) {   /* (piper's folder, as piper_start finds it) */
++        DWORD n = GetModuleFileNameW(NULL, piper_dir, MAX_PATH);
++        while (n && piper_dir[n - 1] != L'\\') n--;
++        piper_dir[n] = 0;
++        wcscat(piper_dir, L"piper");
++    }
++    wchar_t pat[MAX_PATH];
++    swprintf(pat, MAX_PATH, L"%ls\custom\*.onnx", piper_dir);
++    WIN32_FIND_DATAW fd;
++    HANDLE f = FindFirstFileW(pat, &fd);
++    piper_custom.model = NULL;
++    if (f == INVALID_HANDLE_VALUE) return 0;
++    do {
++        wchar_t js[MAX_PATH];
++        swprintf(js, MAX_PATH, L"%ls\custom\%ls.json", piper_dir, fd.cFileName);
++        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && GetFileAttributesW(js) != INVALID_FILE_ATTRIBUTES) {
++            swprintf(name, MAX_PATH, L"custom\%ls", fd.cFileName);
++            piper_custom.model = name;
++            break;
++        }
++    } while (FindNextFileW(f, &fd));
++    FindClose(f);
++    return piper_custom.model != NULL;
++}
++
 +static void speak(ISpVoice *v, const wchar_t *words, int who_speaks, int *speaking, int64_t *piper_until) {
 +    static int said;
-+    const int kind = rx_option(OPT_VOICE_KIND, 0), speed = rx_option(OPT_VOICE_SPEED, 100);
++    int kind = rx_option(OPT_VOICE_KIND, 0);
++    const int speed = rx_option(OPT_VOICE_SPEED, 100);
 +    int64_t dur = 0;
++    if (kind == 2) {   /* (Custom: every line in the player's own voice; Link's choices keep his pitch) */
++        static int told;
++        if (custom_model() && piper_start(&piper_custom, speed)) {
++            if (told != 1) told = 1, hos_log("voice: custom voice piper\%ls", piper_custom.model);
++            if (!who_speaks) {
++                const int semis = rx_option(OPT_LINK_PITCH, 3);
++                voice_shift = pow(2.0, (semis < 0 ? 0 : semis > 6 ? 6 : semis) / 12.0);
++            }
++            dur = piper_say(&piper_custom, words, -1);
++            voice_shift = 1.0;
++            if (dur > 0) {
++                if (said < 40) said++, hos_log("voice (custom): \"%.70ls\"", words);
++                *piper_until = hos_now_ns() + dur + 200000000LL, *speaking = 2;
++                return;
++            }
++        }
++        if (told != 2) told = 2, hos_log("voice: Custom chosen but no piper\custom\*.onnx (with its .onnx.json) worked: the natural voice instead");
++        kind = 0;
++    }
 +    char who[96] = "";
 +    char sk = 0;
 +    const uint64_t o2 = g64(MSG_HOLDER);
@@ -752,6 +921,17 @@ index 0000000..52c95c9
 +                                      "choice button not readable", "choice button: no text object", "choice text has no words"};
 +    hos_log("voice: %s (last choice %u, cursor %u)", say[why], a, b);
 +}
++static uint32_t choice_last;   /* (the open menu's last choice index, for the choice glow) */
++static uint64_t choice_win;     /* (the choice window's address: a new one, a new menu) */
++static int choice_glow_on;     /* (the list was just read: the choice arrow glows until anything changes) */
++static int list_said;          /* (the list's read was started: arms the glow once, when it ends) */
++static int convo_gen;          /* (+1 each time the box opens (+0x30 from -1 to a value): a new conversation, all fresh) */
++static int menu_stale;         /* (a page came after the choices: the menu's memory is old, its cursor not read) */
++static void choice_disarm(const char *why) {   /* (never stuck: the flag back to 0 whatever the menu's memory says) */
++    if (choice_glow_on || list_said) hos_log("voice: choice glow off (%s)", why);
++    choice_glow_on = list_said = 0;
++    if (glow_flag && *glow_flag >= 0x100) glow(0);
++}
 +static uint32_t choice_menu(wchar_t *list, int lmax, int *cursor, wchar_t *one, int omax) {
 +    if (list && lmax) list[0] = 0;
 +    if (one && omax) one[0] = 0;
@@ -791,10 +971,23 @@ index 0000000..52c95c9
 +        if (one && i == cur) wcsncpy(one, wd, (size_t)omax - 1), one[omax - 1] = 0;
 +    }
 +    choice_why(0, last, cur);
++    choice_last = last, choice_win = n;
 +    *cursor = (int)cur;
 +    return sig;
 +}
 +
++
++/* the dialogue box on screen: the game drawing its text pane (host/oot_text_size.c calls hos_oot_voice_pane) */
++static volatile int64_t pane_ns;
++/* The box's state fields, as far as known (2026-11-12): +4 a byte, 1 seen with the lodge's choice menu up, 0 after; +0x30
++   -1 when closed. Not yet known for a plain talk without choices, so: the glow comes on after every page read, and goes
++   when one of them turns to its "closed" value (or the box's page goes back to 1, or a minute passes); each change is
++   logged with the raw values, and every 2 s while there is text */
++
++
++static int box_open_now(uint64_t obj) {   /* (speech can end after the box was closed: then no glow) */
++    return in_heap(obj) && g32(obj + 0x30) != 0xffffffffu;
++}
 +static DWORD WINAPI voice_thread(void *arg) {
 +    (void)arg;
 +    if (FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED))) return 0;
@@ -812,6 +1005,8 @@ index 0000000..52c95c9
 +    int speaking = 0;   /* (1 the Windows voice, 2 piper until piper_until) */
 +    int64_t piper_until = 0;
 +    wchar_t words[MAXT];
++    int page_read = 0;
++   /* (what is being said is a dialogue page: only that ends in the "press next" glow) */
 +    for (;;) {
 +        Sleep(100);
 +        const int64_t now = hos_now_ns();
@@ -822,6 +1017,46 @@ index 0000000..52c95c9
 +            diag++, seen_obj = obj;
 +            hos_log("voice: message object %#llx text %#llx len %u", (unsigned long long)obj,
 +                    in_heap(obj) ? (unsigned long long)g64(obj + MSG_TEXT) : 0ULL, in_heap(obj) ? g32(obj + MSG_LEN) : 0u);
++        }
++        if (in_heap(obj)) {   /* (the box opening: a new conversation) */
++            /* (+0x30 is the message's id, -1 between messages. A talk ENDED when the page went to 0 while shut; a pause holds
++               its page and goes on at the next. Measured 2026-11-13: pauses 129-2916 ms, re-talks 1406-2941 ms, so no timer.
++               A different cast of people on opening is a new talk too) */
++            static uint32_t prev30 = 0, open_cast;
++            static int64_t shut_at;
++            static int ended;
++            const uint32_t c30 = g32(obj + 0x30);
++            if (c30 == 0xffffffffu && prev30 != 0xffffffffu) shut_at = now, ended = 0;
++            if (c30 == 0xffffffffu && g32(obj + MSG_PAGE) == 0) ended = 1;
++            if (prev30 == 0xffffffffu && c30 != 0xffffffffu) {
++                char cl[512];
++                const uint32_t cs = cast_list(obj, cl, sizeof cl);
++                const int other = cs && open_cast && cs != open_cast;
++                if (ended || other) {
++                    convo_gen++, last_text = 0, last_hash = 0;
++                    hos_log("voice: box opened (+0x30 %#x) after %lld ms: new conversation %d (%s), read fresh", c30,
++                            (long long)((now - shut_at) / 1000000), convo_gen, ended ? "page went to 0" : "other people");
++                } else {
++                    static int told;
++                    if (told < 60) told++, hos_log("voice: next message (+0x30 %#x) after %lld ms: same conversation (page held)", c30,
++                                                   (long long)((now - shut_at) / 1000000));
++                }
++                if (cs) open_cast = cs;
++            }
++            prev30 = c30;
++            {   /* (the cast: logged at each open and whenever it changes in a box) */
++                static uint32_t last_set = 1;
++                static int told;
++                if (c30 != 0xffffffffu && told < 200) {
++                    char cl[512];
++                    const uint32_t set = cast_list(obj, cl, sizeof cl);
++                    if (set != last_set) told++, last_set = set, hos_log("voice: cast %08x (+0x30 %#x): %s", set, c30, cl[0] ? cl : "(none)");
++                }
++            }
++            if (c30 == 0xffffffffu && now - shut_at > 300000000LL && glow_flag && *glow_flag) {   /* (no box: no glow, ever) */
++                choice_disarm("box shut"), glow(0);
++                hos_log("voice: box shut 300 ms: glow off");
++            }
 +        }
 +        if (in_heap(obj)) {
 +            /* (the message's pages are a ring of nodes {prev, next, flags, len, text...}; +0x58 is the first page's
@@ -843,12 +1078,16 @@ index 0000000..52c95c9
 +                for (uint32_t i = 0; i < len && i < 4096; i++) h = (h ^ *(const unsigned char *)A64_PTR(text + i)) * 16777619u;
 +                if (text != last_text || h != last_hash) {
 +                    if (diag < 40) diag++, hos_log("voice: new text at %#llx, %u bytes", (unsigned long long)text, len);
++                    choice_disarm("new text");
++                    menu_stale = 1;
 +                    static int first = 1;   /* (the message already there when the thread first looks is not new) */
 +                    last_text = text, last_hash = h;
 +                    glow(0);
 +                    if (speaking) hush(v), speaking = 0;   /* (a new page: the last one's voice stops) */
 +                    /* (closing the box drops the page back to 1: the same message's first page again is not new) */
 +                    static uint32_t page1_hash, last_page;
++                    static int pg_gen;
++                    if (pg_gen != convo_gen) pg_gen = convo_gen, page1_hash = 0, last_page = 0;
 +                    const uint32_t pg = page < 64 ? page : 1;
 +                    const int back_to_start = pg <= 1 && last_page > 1 && h == page1_hash;
 +                    if (pg <= 1) page1_hash = h;
@@ -872,18 +1111,21 @@ index 0000000..52c95c9
 +               new conversation) */
 +            static uint32_t heard[16];
 +            static int64_t heard_at[16];
++            static int hd_gen;
++            if (hd_gen != convo_gen) hd_gen = convo_gen, memset(heard, 0, sizeof heard), memset(heard_at, 0, sizeof heard_at);   /* (a new talk: all heard afresh; within one, 20 s) */
 +            uint32_t wh = 2166136261u;
 +            for (const wchar_t *w = words; *w; w++) wh = (wh ^ (uint32_t)*w) * 16777619u;
 +            int again = 0, slot = 0;
 +            for (int q = 0; q < 16; q++) {
-+                if (heard[q] == wh && now - heard_at[q] < 45000000000LL) again = 1, slot = q;
++                if (heard[q] == wh && now - heard_at[q] < 20000000000LL) again = 1, slot = q;
 +                else if (heard_at[q] < heard_at[slot]) slot = q;
 +            }
 +            heard[slot] = wh, heard_at[slot] = now;
 +            if (again) {
 +                static int told;
 +                if (told < 20) told++, hos_log("voice: heard just now, not read again: \"%.50ls\"", words);
-+                glow(rx_option(OPT_VOICE_GLOW, 1));
++                glow(box_open_now(obj) && rx_option(OPT_VOICE_GLOW, 1));
++                menu_stale = 0, list_said = 1;   /* (back at the prompt: its choices again, the arrow says "your turn") */
 +                continue;
 +            }
 +            static int said;
@@ -891,14 +1133,19 @@ index 0000000..52c95c9
 +                if (said < 30) said++, hos_log("voice: skipped, the game voices it: \"%.60ls\"", words);
 +            } else {
 +                speak(v, words, 1, &speaking, &piper_until);
++                page_read = 1;
 +            }
 +        }
 +        {   /* (Link's voice or pitch changed in the menu: a sample) */
 +            static int lv = -1, lp = -1;
++            static int64_t began;
++            if (!began) began = now;
 +            const int v2 = rx_option(OPT_LINK_VOICE, 0), p2 = rx_option(OPT_LINK_PITCH, 3);
++            if (now - began < 8000000000LL) lv = -1;   /* (the first seconds: the saved settings arriving, not a change) */
 +            if (lv >= 0 && (v2 != lv || p2 != lp) && rx_option(OPT_VOICE_ON, 1)) {
 +                if (speaking) hush(v), speaking = 0;
 +                speak(v, L"Hi! I'm Link! Let's go!", 0, &speaking, &piper_until);
++                page_read = 0;
 +            }
 +            lv = v2, lp = p2;
 +        }
@@ -906,28 +1153,82 @@ index 0000000..52c95c9
 +        {
 +            static uint32_t shown_sig;
 +            static int shown_cursor = -1, choices_due;
++            static int64_t cursor_due;
 +            static wchar_t list[MAXT];
 +            int cursor;
 +            const uint32_t sig = in_heap(obj) ? choice_menu(list, MAXT, &cursor, NULL, 0) : 0;
-+            if (!in_heap(obj)) shown_sig = 0, choices_due = 0;   /* (no box: the next menu is new, even the same one) */
++            if (!in_heap(obj)) shown_sig = 0, choices_due = 0;
++            static int ch_gen;
++            static uint64_t seed_win;
++            if (ch_gen != convo_gen) {   /* (new conversation: what the window holds now is the last menu's, not read; a list
++                                            read only when it changes, or comes in a new window) */
++                ch_gen = convo_gen, choices_due = 0;
++                int c0;
++                shown_sig = in_heap(obj) ? choice_menu(NULL, 0, &c0, NULL, 0) : 0;
++                seed_win = shown_sig ? choice_win : 0;
++                if (shown_sig) shown_cursor = c0;
++                hos_log("voice: new conversation: the choice window holds %08x (window %#llx), not read", shown_sig,
++                        (unsigned long long)seed_win);
++            }   /* (no box: the next menu is new, even the same one) */
++            if (sig && seed_win && choice_win != seed_win) {
++                hos_log("voice: choice window moved %#llx -> %#llx: a new menu", (unsigned long long)seed_win,
++                        (unsigned long long)choice_win);
++                seed_win = 0, shown_sig = 0;
++            }
++            if (!sig && seed_win) seed_win = 0, shown_sig = 0;   /* (the window went: an identical list later is new) */
 +            if (sig && sig != shown_sig) {
-+                shown_sig = sig, shown_cursor = cursor, choices_due = 1;
++                shown_sig = sig, shown_cursor = cursor, choices_due = 1, menu_stale = 0;
 +                static int lg;
 +                if (lg < 20) lg++, hos_log("voice: choices %08x, cursor %d: \"%.80ls\"", sig, cursor, list);
++            } else if (sig && cursor != shown_cursor && menu_stale) {
++                shown_cursor = cursor;   /* (an old menu's cursor: not the player's, not read) */
 +            } else if (sig && cursor != shown_cursor && rx_option(OPT_VOICE_ON, 1)) {
++                /* (the cursor moved: what is being said stops now, the new choice is said once the cursor has rested
++                   200 ms, so holding the stick does not pile up lines) */
 +                shown_cursor = cursor, choices_due = 0, pending_at = 0;
++                if (speaking) hush(v), speaking = 0;
++                if (!choice_glow_on) glow(0);
++                cursor_due = now + 200000000LL;
++            }
++            if (cursor_due && now > cursor_due) {
++                cursor_due = 0;
 +                wchar_t one[256];
-+                if (choice_menu(NULL, 0, &cursor, one, 256)) {
-+                    glow(0);
-+                    if (speaking) hush(v), speaking = 0;
++                int c1;
++                if (sig && !menu_stale && rx_option(OPT_VOICE_ON, 1) && choice_menu(NULL, 0, &c1, one, 256) && c1 == shown_cursor) {
 +                    speak(v, one, 0, &speaking, &piper_until);
++                    page_read = 0;
++                    if (!choice_glow_on) list_said = 1;   /* (a cursor read before the first: it arms too) */
 +                }
 +            }
-+            if (choices_due && !pending_at && !speaking && rx_option(OPT_VOICE_ON, 1)) {   /* (after the prompt) */
++            if (choices_due && !pending_at && !speaking && rx_option(OPT_VOICE_ON, 1)) {   /* (after the prompt: the highlighted
++                                                                                             choice only, the user's wish) */
 +                choices_due = 0;
 +                glow(0);
-+                speak(v, list, 0, &speaking, &piper_until);
++                wchar_t one[256];
++                int c1;
++                if (choice_menu(NULL, 0, &c1, one, 256)) speak(v, one, 0, &speaking, &piper_until);
++                page_read = 0;
++                list_said = 1;
 +            }
++            /* the choice glow: once the list has been read, the highlighted choice glows (the renderer's flag 0x100 | last
++               choice << 4 | cursor) until the menu goes; no page glow while a menu is up */
++            if (sig) {
++                if (list_said && !speaking && !pending_at && !choice_glow_on) choice_glow_on = 1, list_said = 0, hos_log("voice: choice arrow armed (%u choices)", choice_last + 1);   /* (armed once) */
++                if (choice_glow_on && rx_option(OPT_VOICE_GLOW, 1)) {
++                    const int val = 0x100 | (int)choice_last << 4 | cursor;
++                    if (!glow_flag || *glow_flag != val) {
++                        static int lg2;
++                        if (lg2 < 40) lg2++, hos_log("voice: choice glow on choice %d of %u (layout: right half of the box, rows "
++                                                     "spread round 79%% down; list %d chars: \"%.120ls\")", cursor + 1, choice_last + 1, (int)wcslen(list), list);
++                        glow(val);
++                    }
++                } else if (glow_flag && *glow_flag == 1 && !menu_stale && !seed_win) {   /* (a live menu only: an old one in memory must not eat the press-next glow) */
++                    glow(0);
++                }
++            } else {
++                choice_disarm("menu gone");
++            }
++            if (!choice_glow_on && glow_flag && *glow_flag >= 0x100) glow(0);
 +        }
 +        if (speaking && hos_voiced_line_ns > now - 150000000LL) {   /* (the game began a voiced line: ours stops) */
 +            hush(v);
@@ -936,10 +1237,30 @@ index 0000000..52c95c9
 +        if (speaking == 1 && !pending_at) {   /* (the page read to its end: the rainbow says "press next") */
 +            SPVOICESTATUS st;
 +            if (SUCCEEDED(ISpVoice_GetStatus(v, &st, NULL)) && st.dwRunningState == SPRS_DONE)
-+                speaking = 0, glow(rx_option(OPT_VOICE_GLOW, 1));
++                speaking = 0, choice_glow_on ? (void)0 : glow(page_read && box_open_now(obj) && rx_option(OPT_VOICE_GLOW, 1));
 +        }
-+        if (speaking == 2 && !pending_at && now > piper_until) speaking = 0, glow(rx_option(OPT_VOICE_GLOW, 1));
-+        if (glow_flag && *glow_flag && now - glow_since > 60000000000LL) glow(0);   /* (a minute: whatever it was, gone) */
++        if (speaking == 2 && !pending_at && now > piper_until)
++            speaking = 0, choice_glow_on ? (void)0 : glow(page_read && box_open_now(obj) && rx_option(OPT_VOICE_GLOW, 1));
++        {   /* (the box's fields: logged; one turning to "closed" ends the glow) */
++            static uint32_t f4 = 0x100, f30, f48;
++            static int told;
++            static int64_t every;
++            const uint64_t o3 = g64(MSG_HOLDER);
++            if (in_heap(o3)) {
++                const uint32_t n4 = *(const unsigned char *)A64_PTR(o3 + 4), n30 = g32(o3 + 0x30), n48 = g32(o3 + MSG_PAGE);
++                const int changed = f4 != 0x100 && (n4 != f4 || n30 != f30 || n48 != f48);
++                if ((changed || now - every > 2000000000LL) && told < 300 && (changed || speaking || pending_at || (glow_flag && *glow_flag)))
++                    told++, every = now, hos_log("voice: box fields%s: +4=%u +0x30=%#x page=%u glow=%d", changed ? " changed" : "", n4,
++                                                  n30, n48, glow_flag ? *glow_flag : -1);
++                const int closed = f4 != 0x100 && ((f4 && !n4) || (f30 != 0xffffffffu && n30 == 0xffffffffu));
++                if (closed && glow_flag && *glow_flag) glow(0), hos_log("voice: box closed: glow off");
++                if (closed) choice_disarm("box closed");
++                else if (f4 != 0x100 && n48 != f48) choice_disarm("page changed");
++                else if (n30 == 0xffffffffu) choice_disarm("box shut");
++                f4 = n4, f30 = n30, f48 = n48;
++            }
++        }
++        if (glow_flag && *glow_flag && now - glow_since > 60000000000LL) choice_disarm("a minute"), glow(0);   /* (a minute: whatever it was, gone) */
 +    }
 +}
 +
@@ -950,14 +1271,14 @@ index 0000000..52c95c9
 +    if (e && *e && atoi(e) == 0) return;
 +    CloseHandle(CreateThread(NULL, 0, voice_thread, NULL, 0, NULL));
 +}
-+void hos_oot_voice_pane(Ctx *c, uint64_t pane) { (void)c, (void)pane; hos_oot_voice_start(); }
++void hos_oot_voice_pane(Ctx *c, uint64_t pane) { (void)c, (void)pane; pane_ns = hos_now_ns(); hos_oot_voice_start(); }
 +#else
 +void hos_oot_voice_start(void) {}
 +void hos_oot_voice_pane(Ctx *c, uint64_t pane) { (void)c, (void)pane; }
 +#endif
 diff --git a/host/oot_voice_cast.h b/host/oot_voice_cast.h
 new file mode 100644
-index 0000000..0ff297a
+index 00000000..0ff297a8
 --- /dev/null
 +++ b/host/oot_voice_cast.h
 @@ -0,0 +1,196 @@

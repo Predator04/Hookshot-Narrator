@@ -1,0 +1,1159 @@
+diff --git a/gpu/vk/vk_api.h b/gpu/vk/vk_api.h
+index 0612712..577d4b6 100644
+--- a/gpu/vk/vk_api.h
++++ b/gpu/vk/vk_api.h
+@@ -35,6 +35,9 @@ enum { HOS_OPT_HDR_NATIVE = 40, HOS_OPT_HDR_PEAK, HOS_OPT_HDR_WHITE, HOS_OPT_DIS
+ /* (HOS_OPT_DISABLE_CAMERA_CENTERING, 45: Controls' movement-follow yaw, host/mouse_native.c: 0 stock, 1 disabled;
+    44 is reserved for HOS_OPT_SKIP_TITLE) */
+ enum { HOS_OPT_DISABLE_CAMERA_CENTERING = 45 };
++/* (Hookshot-Narrator) read-aloud, host/oot_voice.c: on 0/1; voice 0 natural (Piper) 1 Windows; speed in percent; glow 0/1;
++   Link's voice 0..5; Link's pitch in semitones */
++enum { HOS_OPT_VOICE_ON = 70, HOS_OPT_VOICE_KIND, HOS_OPT_VOICE_SPEED, HOS_OPT_VOICE_GLOW, HOS_OPT_LINK_VOICE, HOS_OPT_LINK_PITCH };
+ 
+ /* (hookshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of hookshot_options.ini):
+    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position, SDL's order (the bottom face
+diff --git a/gpu/vk/vk_menu.cpp b/gpu/vk/vk_menu.cpp
+index 9b5a479..5e24df5 100644
+--- a/gpu/vk/vk_menu.cpp
++++ b/gpu/vk/vk_menu.cpp
+@@ -99,6 +99,17 @@ const char* tx_framegen(int v) {
+     return t[v];
+ }
+ const char* tx_onoff(int v) { return v ? "On" : "Off"; }
++// (Hookshot-Narrator) read-aloud's rows
++const char* tx_voice_kind(int v) { return v ? "Windows" : "Natural"; }
++const char* tx_link_voice(int v) {
++    static const char* t[] = {"Voice 1", "Voice 2", "Voice 3", "Voice 4", "Voice 5", "Voice 6"};
++    return t[v < 0 ? 0 : v > 5 ? 5 : v];
++}
++const char* tx_semitones(int v) {
++    static char b[16];
++    snprintf(b, sizeof b, v ? "+%d" : "Normal", v);
++    return b;
++}
+ const char* tx_profile(int v) { return v ? "Handheld" : "Docked"; }   // (opts.handheld: the Profile row)
+ const char* tx_menu_shortcut(int v) {
+     // (F1 is never turned off: the menu is always one key away. Esc as well, as a PC game's pause menu)
+@@ -743,6 +754,21 @@ Row rows[] = {
+      false, true},
+     {TAB_AUDIO, "Audio output", &opts.audio_output, 0, 2, 1, tx_audio_output,
+      "The speakers the game mixes its sound for. Applies after a restart.", hn_audio_output, true, true},
++    // (Hookshot-Narrator) read-aloud, host/oot_voice.c
++    {TAB_AUDIO, "Read aloud", &opts.voice_on, 0, 1, 1, tx_onoff,
++     "Characters' lines in dialogue boxes are spoken aloud, for players who cannot read yet. Lines the game voices itself "
++     "are left to the game.", nullptr, false, true},
++    {TAB_AUDIO, "Read-aloud voice", &opts.voice_kind, 0, 1, 1, tx_voice_kind,
++     "Natural: a lifelike voice that runs on this PC (Piper). Windows: the voice built into Windows.", nullptr, false, true},
++    {TAB_AUDIO, "Read-aloud speed", &opts.voice_speed, 50, 200, 10, tx_percent,
++     "How fast lines are read. 100% is the voice's normal pace.", nullptr, false, true},
++    {TAB_AUDIO, "Press-next glow", &opts.voice_glow, 0, 1, 1, tx_onoff,
++     "A rainbow glow round the screen once a page has been read, to show it is time to press for the next one.", nullptr,
++     false, true},
++    {TAB_AUDIO, "Link's voice", &opts.link_voice, 0, 5, 1, tx_link_voice,
++     "The voice that reads Link's replies (the choices). Changing it plays a sample.", nullptr, false, true},
++    {TAB_AUDIO, "Link's voice pitch", &opts.link_pitch, 0, 6, 1, tx_semitones,
++     "How much higher Link's voice is, in semitones, to sound younger. Changing it plays a sample.", nullptr, false, true},
+ 
+     // Gameplay
+     {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff, "Frames per second in the top right corner.", hn_fps,
+@@ -3203,11 +3229,52 @@ void menu_tick() {
+     }
+ }
+ 
++// (Hookshot-Narrator) Read-aloud's "press next" glow: host/oot_voice.c sets this to 1 when the voice has finished the
++// dialogue box's page, 0 when the page changes; a rainbow glow then pulses round the picture so a player who cannot read
++// knows to go on
++extern "C" __declspec(dllexport) volatile int mkwvk_voice_glow = 0;
++static void draw_voice_glow(uint32_t w, uint32_t h) {
++    // (a soft edge glow: each edge a gradient from the rim, fading to nothing inward, its colour flowing round the frame;
++    // breathes slowly)
++    ImDrawList* dl = ImGui::GetForegroundDrawList();
++    const double t = prof_now() / 1e9;
++    const float breathe = 0.7f + 0.3f * (float)std::sin(t * 2.2);
++    const float W = (float)w, H = (float)h, m = std::min(W, H);
++    const int seg = 120;
++    auto col = [&](float u, float a) {   // (u: 0..1 round the frame, clockwise from the top left)
++        float r, g, b;
++        ImGui::ColorConvertHSVtoRGB((float)std::fmod(u + 10.0 - t * 0.12, 1.0), 0.75f, 1.0f, r, g, b);
++        return ImGui::GetColorU32(ImVec4(r, g, b, a));
++    };
++    const ImU32 clear = 0;
++    struct Band { float depth, alpha; };
++    const Band bands[] = {{m * 0.075f, 0.45f * breathe}, {m * 0.022f, 0.55f * breathe}};   // (wide haze, brighter rim)
++    for (const Band& bd : bands) {
++        const float D = bd.depth, A = bd.alpha;
++        for (int i = 0; i < seg; i++) {
++            const float f0 = (float)i / seg, f1 = (float)(i + 1) / seg;
++            // top: left to right, u 0..0.25
++            ImU32 a0 = col(f0 * 0.25f, A), a1 = col(f1 * 0.25f, A);
++            dl->AddRectFilledMultiColor(ImVec2(W * f0, 0), ImVec2(W * f1, D), a0, a1, clear, clear);
++            // right: top to bottom, u 0.25..0.5
++            a0 = col(0.25f + f0 * 0.25f, A), a1 = col(0.25f + f1 * 0.25f, A);
++            dl->AddRectFilledMultiColor(ImVec2(W - D, H * f0), ImVec2(W, H * f1), clear, a0, a1, clear);
++            // bottom: right to left, u 0.5..0.75
++            a0 = col(0.5f + f0 * 0.25f, A), a1 = col(0.5f + f1 * 0.25f, A);
++            dl->AddRectFilledMultiColor(ImVec2(W * (1 - f1), H - D), ImVec2(W * (1 - f0), H), clear, clear, a0, a1);
++            // left: bottom to top, u 0.75..1
++            a0 = col(0.75f + f0 * 0.25f, A), a1 = col(0.75f + f1 * 0.25f, A);
++            dl->AddRectFilledMultiColor(ImVec2(0, H * (1 - f1)), ImVec2(D, H * (1 - f0)), a1, clear, clear, a0);
++        }
++    }
++}
++
+ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+     const bool start = startup_on.load(std::memory_order_acquire);
+     const bool fps = opts.show_fps && !start;   // (no game frames yet: not "0 FPS" over the start-up screen)
+     const bool open = open_now.load(std::memory_order_relaxed);
+-    if (!start && !fps && !open) {   // (nothing shows: no ImGui frame, no render pass)
++    const bool glow = mkwvk_voice_glow && opts.voice_glow && opts.voice_on && !start;
++    if (!start && !fps && !open && !glow) {   // (nothing shows: no ImGui frame, no render pass)
+         // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
+         // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
+         if (prebake_needed(w, h) && ui::begin(w, h)) {
+@@ -3232,6 +3299,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+     if (start) draw_startup(c);   // (under the menu)
+     if (open) draw_menu(c);
+     if (fps) draw_fps(c, open);
++    if (glow && !open) draw_voice_glow(w, h);
+     ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
+     ui::record(cmd, index, w, h);
+ }
+@@ -3239,11 +3307,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+ void menu_record_image(VkCommandBuffer cmd, VkImage image, VkImageView view, uint32_t w, uint32_t h) {
+     const bool open = open_now.load(std::memory_order_relaxed);
+     const bool fps = opts.show_fps && !startup_on.load(std::memory_order_acquire);
+-    if (!open && !fps) return;
++    const bool glow = mkwvk_voice_glow && opts.voice_glow && opts.voice_on;
++    if (!open && !fps && !glow) return;
+     if (!ui::begin(w, h)) return;
+     ui::Ctx c = ui_ctx(w, h);
+     if (open) draw_menu(c);
+     if (fps) draw_fps(c, open);
++    if (glow && !open) draw_voice_glow(w, h);
+     ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
+     ui::record_to(cmd, image, view, w, h);
+ }
+diff --git a/gpu/vk/vk_menu.h b/gpu/vk/vk_menu.h
+index d077bb8..7908508 100644
+--- a/gpu/vk/vk_menu.h
++++ b/gpu/vk/vk_menu.h
+@@ -50,6 +50,12 @@ struct Options {
+     int invert_cam_x = 0; // right-stick camera horizontal inversion: 0 normal, 1 inverted
+     int invert_cam_y = 0; // right-stick camera vertical inversion: 0 normal, 1 inverted
+     int rumble = 100;     // the controllers' rumble in percent of the game's: 0 Off, 25 to 150 (host/pad_sdl.c)
++    int voice_on = 1;             // (Hookshot-Narrator, host/oot_voice.c) read-aloud of dialogue boxes
++    int voice_kind = 0;           // 0 natural (Piper), 1 Windows' voice
++    int voice_speed = 100;        // percent of the voice's normal pace
++    int voice_glow = 1;           // the rainbow "press next" glow
++    int link_voice = 0;           // which of the candidate voices reads Link's choices
++    int link_pitch = 3;           // semitones Link's voice is raised
+     int stick_dead_zone = 0;  // a stick axis below it is 0: 0 XInput's 7849 (~24%), 1..5 5% to 30% (host/nn_hid.c)
+     int pad_layout = 0;   // 0 Nintendo (default), 1 Xbox / PC, 2 Swap Face Buttons, 3 Custom
+     int gyro = 1;         // motion controls from a pad's gyroscope (host/pad_sdl.c, host/hos_motion.h); on by default
+diff --git a/gpu/vk/vk_replay.cpp b/gpu/vk/vk_replay.cpp
+index 7b2934f..81bb08a 100644
+--- a/gpu/vk/vk_replay.cpp
++++ b/gpu/vk/vk_replay.cpp
+@@ -4280,6 +4280,12 @@ void fill_replay_table(MkwVkRenderer& t) {
+         if (id == HOS_OPT_VOLUME) return opts.volume;
+         if (id == HOS_OPT_MUTE_BACKGROUND) return opts.mute_background;
+         if (id == HOS_OPT_DISABLE_CAMERA_CENTERING) return opts.disable_camera_centering;
++        if (id == HOS_OPT_VOICE_ON) return opts.voice_on;   // (Hookshot-Narrator: read-aloud, host/oot_voice.c)
++        if (id == HOS_OPT_VOICE_KIND) return opts.voice_kind;
++        if (id == HOS_OPT_VOICE_SPEED) return opts.voice_speed;
++        if (id == HOS_OPT_VOICE_GLOW) return opts.voice_glow;
++        if (id == HOS_OPT_LINK_VOICE) return opts.link_voice;
++        if (id == HOS_OPT_LINK_PITCH) return opts.link_pitch;
+         if (id == HOS_OPT_TEXT_SIZE) return opts.text_size;
+         return id == 0 ? opts.realtime : id == 1 ? menu_is_open() : id == 2 ? resolution_auto() && !temporal_full_scale() : id == 3 ? (temporal_full_scale() ? 10000 : resolution_scale()) : id == 4 ? opts.pad_background : id == 5 ? opts.text_speed : id == 6 ? opts.mouse_native :
+                id == 7 ? opts.mouse_sens : id == 8 ? opts.mouse_invert : id == 9 ? opts.rumble : id == 16 ? opts.invert_cam_x : id == 17 ? opts.invert_cam_y : id == HOS_OPT_GYRO ? opts.gyro : id == HOS_OPT_GYRO_SENS_X ? opts.gyro_sens_x : id == HOS_OPT_GYRO_SENS_Y ? opts.gyro_sens_y : id == HOS_OPT_GYRO_INV_X ? opts.gyro_inv_x : id == HOS_OPT_GYRO_INV_Y ? opts.gyro_inv_y : id == HOS_OPT_GYRO_DEADZONE ? opts.gyro_deadzone :
+diff --git a/host/hos_main.c b/host/hos_main.c
+index 39b0ff9..f49f007 100644
+--- a/host/hos_main.c
++++ b/host/hos_main.c
+@@ -1160,6 +1160,10 @@ void hos_oot_lift_player(Ctx *c, uint64_t actor) {
+     static SRWLOCK cheats_lock = SRWLOCK_INIT;
+     if (!TryAcquireSRWLockExclusive(&cheats_lock)) return;
+     oot_update_player_cheats(c, actor, components);
++    {   /* (Hookshot-Narrator: read-aloud fills in a message's numbers from GameDataMgr, host/oot_voice.c) */
++        extern volatile uint64_t hos_oot_gamedata_mgr;
++        hos_oot_gamedata_mgr = oot_singleton(c, OOT_GAMEDATA_SLOT);
++    }
+     ReleaseSRWLockExclusive(&cheats_lock);
+ #else
+     (void)c;
+diff --git a/host/nn_fs.c b/host/nn_fs.c
+index 25840fa..98e0627 100644
+--- a/host/nn_fs.c
++++ b/host/nn_fs.c
+@@ -324,6 +324,16 @@ HLE(_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci) {
+     char path[HOS_FS_PATH];
+     int writable = 0;
+     const char *g = gstr(ARG(1));
++    {   /* (local) a voiced line's stream: read-aloud (host/oot_voice.c) stays quiet for that box */
++        extern volatile long long hos_voiced_line_ns;
++        void hos_oot_voice_start(void);
++        hos_oot_voice_start();   /* (the read-aloud thread, once) */
++        if (strstr(g, "Voice/Resource/Stream/") || strstr(g, "Voice\\Resource\\Stream\\")) {
++            hos_voiced_line_ns = hos_now_ns();
++            static int said;
++            if (said < 10) said++, hos_log("voice: the game voices this line itself (%s)", g);
++        }
++    }
+     if (!host_path(g, path, sizeof path, &writable)) { hos_log("fs: OpenFile(%s): unknown mount", g); RET(R_PATH_NOT_FOUND); return; }
+     int want_write = (ARG(2) & 6) != 0;
+     if (want_write && !writable) { RET(R_PATH_NOT_FOUND); return; }
+diff --git a/host/oot_text_size.c b/host/oot_text_size.c
+index c747cbd..f900b92 100644
+--- a/host/oot_text_size.c
++++ b/host/oot_text_size.c
+@@ -47,6 +47,10 @@ void hos_oot_text_pane(Ctx *c, uint64_t anim) {
+     const float s = text_size_scale(env && *env ? atoi(env) : rx_option(HOS_OPT_TEXT_SIZE, 0));
+     const uint64_t wrapper = anim ? recomp_load64(c, anim + TEXT_ANIM_WRAPPER) : 0;
+     if (!wrapper || !recomp_load64(c, wrapper + TEXT_WRAPPER_PANE)) return;   /* (a pane not set up yet) */
++    {   /* (local) read-aloud, host/oot_voice.c */
++        void hos_oot_voice_pane(Ctx *c, uint64_t pane);
++        hos_oot_voice_pane(c, recomp_load64(c, wrapper + TEXT_WRAPPER_PANE));
++    }
+ 
+     /* (the fields of the panes seen: a new one takes the place of the one stepped longest ago. Only the text on screen is
+        stepped, so that one's text is gone) */
+diff --git a/host/oot_voice.c b/host/oot_voice.c
+new file mode 100644
+index 0000000..52c95c9
+--- /dev/null
++++ b/host/oot_voice.c
+@@ -0,0 +1,731 @@
++/* (local) Read-aloud: the lines characters say in their dialogue box, spoken with Windows' own voice (SAPI), for a player
++   who cannot read yet.
++
++   The message on show: found on 2026-11-11 with the Master Craftsman's box up, the guest pointer at 0x84e990b8 (main's
++   data) holds an object whose +0x58 is the message's text (UTF-8) and +0x60 its length in bytes. The text carries tags,
++   0x0E u16 group, u16 tag, u16 size, then size bytes of parameters (the first ones are the box's mood, "Greeting" and so
++   on), which are left out, as are newlines. A thread looks every 100 ms; a new message is spoken after 0.4 s, unless the
++   game opened a voiced line's stream (host/nn_fs.c, hos_voiced_line_ns) around it: then its actor speaks instead.
++
++   HOS_VOICE=0: off. HOS_VOICE_RATE=-10..10 (default -1, a little slow). */
++#include "hos.h"
++#include <stdlib.h>
++#include <string.h>
++#include <math.h>
++#include <wchar.h>
++
++volatile long long hos_voiced_line_ns;
++volatile uint64_t hos_oot_gamedata_mgr;   /* (host/hos_main.c, on Link's update) */   /* (host/nn_fs.c: when the game last opened a voiced line's stream) */
++
++#ifdef _WIN32
++#define COBJMACROS
++#include <windows.h>
++#include <sapi.h>
++#include <mmsystem.h>
++#include <stdio.h>
++
++static const GUID my_CLSID_SpVoice = {0x96749377, 0x3391, 0x11d2, {0x9e, 0xe3, 0x00, 0xc0, 0x4f, 0x79, 0x73, 0x96}};
++static const GUID my_IID_ISpVoice = {0x6c44df74, 0x72b9, 0x4992, {0xa1, 0xec, 0xef, 0x99, 0x6e, 0x04, 0x22, 0xd4}};
++
++enum { MAXT = 2048 };
++#define MSG_HOLDER 0x84e990b8ULL
++#define MSG_TEXT 0x58
++#define MSG_LEN 0x60
++#define MSG_PAGE 0x48
++
++static int in_heap(uint64_t p) {   /* (readable guest memory, asked of Windows: the text may live outside the heap) */
++    if (p < 0x10000 || p >= 0x10000000000ULL) return 0;
++    MEMORY_BASIC_INFORMATION mi;
++    if (!VirtualQuery(A64_PTR(p), &mi, sizeof mi) || mi.State != MEM_COMMIT) return 0;
++    if (mi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
++    return (const char *)mi.BaseAddress + mi.RegionSize - (const char *)A64_PTR(p) >= 16;
++}
++static uint64_t g64(uint64_t a) { uint64_t v; memcpy(&v, A64_PTR(a), 8); return v; }
++static uint32_t g32(uint64_t a) { uint32_t v; memcpy(&v, A64_PTR(a), 4); return v; }
++
++/* A game-data number by name, read as the game's getters do (host/hos_main.c oot_gamedata_word): MurmurHash3 of the name in
++   each of the word tables' hash index. For a message's "variable" tag (group 2 tag 1, its parameters u16 length then the
++   name, "Npc_Hylia_049_Child_HowManyCuccos"), which the game fills in as it shows the text. */
++static uint32_t murmur3(const char *s, size_t n) {
++    uint32_t h = 0, k;
++    size_t i = 0;
++    for (; i + 4 <= n; i += 4) {
++        memcpy(&k, s + i, 4);
++        k *= 0xcc9e2d51u, k = k << 15 | k >> 17, k *= 0x1b873593u;
++        h ^= k, h = h << 13 | h >> 19, h = h * 5 + 0xe6546b64u;
++    }
++    k = 0;
++    for (size_t j = n - i; j; j--) k = k << 8 | (uint8_t)s[i + j - 1];
++    if (n - i) k *= 0xcc9e2d51u, k = k << 15 | k >> 17, k *= 0x1b873593u, h ^= k;
++    h ^= (uint32_t)n, h ^= h >> 16, h *= 0x85ebca6bu, h ^= h >> 13, h *= 0xc2b2ae35u, h ^= h >> 16;
++    return h;
++}
++static int game_number(const char *name, size_t n, int *value) {
++    const uint64_t mgr = hos_oot_gamedata_mgr;
++    if (!in_heap(mgr) || !n) return 0;
++    const uint32_t hash = murmur3(name, n);
++    for (uint32_t t = 0; t < 17; t++) {
++        const uint64_t off = mgr + 0x10 + 0x60 * t;
++        const uint64_t entries = g64(off + 8);
++        const uint32_t count = g32(off);
++        if (!in_heap(entries) || !count || count > 20000) continue;
++        for (uint32_t e = 0; e < count; e++) {   /* (each 0x28-byte entry: its key first, the value at +0x1c) */
++            const uint64_t at = entries + 0x28ULL * e;
++            if (g32(at) == hash || g32(at + 4) == hash) {
++                *value = (int)g32(at + 0x1c);
++                static int told;
++                if (told < 20) told++, hos_log("voice: game number \"%.*s\" = %d (table %u entry %u)", (int)n, name, *value, t, e);
++                return 1;
++            }
++        }
++    }
++    return 0;
++}
++
++/* A message argument the game set for the box (found 2026-11-12 with the Cucco Lady's "Only 7 left to find!" up): a record
++   {u16 name length, the name, 0} in the guest's upper memory (0x7fxxxxxxxx, near 0x7fff985360 then), its type at +0x28 (2: a
++   number) and the number at +0x38. Searched in that range's committed regions under 64 MB. */
++static int message_argument(const char *name, size_t n, int *value, char *text, int tmax) {
++    unsigned char key[160];
++    if (n + 3 > sizeof key) return 0;
++    key[0] = (unsigned char)n, key[1] = (unsigned char)(n >> 8);
++    memcpy(key + 2, name, n);
++    key[n + 2] = 0;
++    const size_t kl = n + 3;
++    const unsigned char *lo = (const unsigned char *)A64_PTR(0x7f00000000ULL), *hi = (const unsigned char *)A64_PTR(0x8000000000ULL);
++    for (const unsigned char *a = lo; a < hi;) {
++        MEMORY_BASIC_INFORMATION mi;
++        if (!VirtualQuery(a, &mi, sizeof mi)) break;
++        const unsigned char *base = (const unsigned char *)mi.BaseAddress, *end = base + mi.RegionSize;
++        if (mi.State == MEM_COMMIT && !(mi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) && (mi.Protect & (PAGE_READWRITE | PAGE_READONLY)) &&
++            mi.RegionSize < (64u << 20)) {
++            for (const unsigned char *q = base; q + 0x40 <= end;) {
++                q = memchr(q, key[2], (size_t)(end - 0x40 - q));
++                if (!q) break;
++                if (q >= base + 2 && !memcmp(q - 2, key, kl)) {
++                    const unsigned char *r = q - 2;
++                    uint16_t type;
++                    memcpy(&type, r + 0x28, 2);
++                    static int told;
++                    if (type == 2) {
++                        memcpy(value, r + 0x38, 4);
++                        if (told < 20) told++, hos_log("voice: message argument \"%.*s\" = %d", (int)n, name, *value);
++                        return 1;
++                    }
++                    /* (other types: the slot as a pointer to text, a name or an item's, if it reads as one) */
++                    uint64_t ptr;
++                    memcpy(&ptr, r + 0x38, 8);
++                    if (in_heap(ptr) && text) {
++                        int k = 0;
++                        const unsigned char *t = (const unsigned char *)A64_PTR(ptr);
++                        while (k < tmax - 1 && t[k] >= 0x20) text[k] = (char)t[k], k++;
++                        text[k] = 0;
++                        if (k >= 1 && !t[k]) {
++                            if (told < 20) told++, hos_log("voice: message argument \"%.*s\" (type %u) = \"%s\"", (int)n, name, type, text);
++                            return 2;
++                        }
++                    }
++                    static int odd;
++                    if (odd < 20) {
++                        odd++;
++                        char hex[3 * 0x40 + 1];
++                        for (int j = 0; j < 0x40; j++) snprintf(hex + 3 * j, 4, "%02x ", r[j]);
++                        hos_log("voice: message argument \"%.*s\" of type %u not read: %s", (int)n, name, type, hex);
++                    }
++                }
++                q++;
++            }
++        }
++        a = end > a ? end : a + 4096;
++    }
++    return 0;
++}
++
++/* the message as words: tags out, newlines to spaces; 0 when it has no letters */
++static int message_words(uint64_t text, uint32_t len, wchar_t *out, int max) {
++    unsigned char b[MAXT];
++    if (len >= sizeof b) len = sizeof b - 1;
++    memcpy(b, A64_PTR(text), len);
++    b[len] = 0;
++    char plain[MAXT];
++    int n = 0, letters = 0;
++    for (uint32_t i = 0; i < len && b[i]; i++) {
++        if (b[i] == 0x0e && i + 6 < len) {   /* tag: group, tag, size, parameters */
++            const unsigned group = b[i + 1] | b[i + 2] << 8, tag = b[i + 3] | b[i + 4] << 8, size = b[i + 5] | b[i + 6] << 8;
++            {   /* (each kind of tag once in the log: a name or item said nowhere shows up here) */
++                static unsigned seen[64];
++                static int nseen;
++                const unsigned id = group << 16 | tag;
++                int known = 0;
++                for (int q = 0; q < nseen; q++) known |= seen[q] == id;
++                if (!known && nseen < 64) {
++                    seen[nseen++] = id;
++                    char hex[3 * 24 + 1] = "";
++                    for (unsigned q = 0; q < size && q < 24 && i + 7 + q < len; q++) snprintf(hex + 3 * q, 4, "%02x ", b[i + 7 + q]);
++                    hos_log("voice: message tag %u/%u, %u bytes: %s", group, tag, size, hex);
++                }
++            }
++            if (group == 2 && size >= 2 && i + 7 + size <= len) {   /* (a game variable: its value said in its place) */
++                const unsigned nl = b[i + 7] | b[i + 8] << 8;
++                int value;
++                static int logged;
++                char word[96];
++                int got = 0;
++                if (nl && 2 + nl <= size) {
++                    got = game_number((const char *)b + i + 9, nl, &value);
++                    if (!got) got = message_argument((const char *)b + i + 9, nl, &value, word, sizeof word);
++                }
++                if (got == 1) {
++                    if (n < (int)sizeof plain - 16) n += snprintf(plain + n, 16, "%d", value);
++                    letters++;
++                } else if (got == 2) {
++                    for (const char *w = word; *w && n < (int)sizeof plain - 1; w++) plain[n++] = *w;
++                    letters += 2;
++                } else if (logged < 20) {
++                    logged++, hos_log("voice: message variable %u/%u \"%.*s\" not found", group, tag, (int)nl, (const char *)b + i + 9);
++                }
++            }
++            i += 6 + size;
++            continue;
++        }
++        if (b[i] == 0x0f && i + 4 < len) { i += 4; continue; }   /* (a closing tag: group, tag) */
++        unsigned char ch = b[i] == '\n' || b[i] == '\r' ? ' ' : b[i];
++        if (ch < 0x20) continue;
++        if (ch == ' ' && n > 0 && plain[n - 1] == ' ') continue;
++        if ((ch | 0x20) >= 'a' && (ch | 0x20) <= 'z') letters++;
++        if (n < (int)sizeof plain - 1) plain[n++] = (char)ch;
++    }
++    plain[n] = 0;
++    if (letters < 2) return 0;
++    return MultiByteToWideChar(CP_UTF8, 0, plain, -1, out, max) > 0;
++}
++
++int rx_option(int id, int otherwise);
++enum { OPT_VOICE_ON = 70, OPT_VOICE_KIND, OPT_VOICE_SPEED, OPT_VOICE_GLOW, OPT_LINK_VOICE, OPT_LINK_PITCH };   /* (gpu/vk/vk_api.h HOS_OPT_VOICE_*) */
++
++/* Piper (piper\ beside the exe: piper.exe and en_US-lessac-medium.onnx), a natural voice run on this PC: one process kept
++   running, a line of text in on its stdin, the path of the .wav it made out on its stdout; played with PlaySound */
++typedef struct { HANDLE in, out, proc; int speed; const wchar_t *model; } Piper;
++static Piper piper_main = {0, 0, 0, 0, L"en_US-lessac-medium.onnx"}, piper_cast = {0, 0, 0, 0, L"en_US-libritts_r-medium.onnx"};
++static int piper_failed;
++static wchar_t piper_dir[MAX_PATH];
++static void piper_stop_process(Piper *pp) {
++    if (pp->proc) TerminateProcess(pp->proc, 0), CloseHandle(pp->proc);
++    if (pp->in) CloseHandle(pp->in);
++    if (pp->out) CloseHandle(pp->out);
++    pp->proc = pp->in = pp->out = NULL;
++}
++static int piper_start(Piper *pp, int speed) {
++    if (pp->proc && speed == pp->speed) return 1;
++    piper_stop_process(pp);
++    if (piper_failed) return 0;
++    DWORD n = GetModuleFileNameW(NULL, piper_dir, MAX_PATH);
++    while (n && piper_dir[n - 1] != L'\\') n--;
++    piper_dir[n] = 0;
++    wcscat(piper_dir, L"piper");
++    wchar_t exe[MAX_PATH], cmd[1024], out[MAX_PATH];
++    swprintf(exe, MAX_PATH, L"%ls\\piper.exe", piper_dir);
++    if (GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES) {
++        piper_failed = 1;
++        hos_log("voice: no piper\\piper.exe beside the game: the Windows voice instead");
++        return 0;
++    }
++    swprintf(out, MAX_PATH, L"%ls\\%ls", piper_dir, pp->model);
++    if (GetFileAttributesW(out) == INVALID_FILE_ATTRIBUTES) {
++        hos_log("voice: no piper\\%ls", pp->model);
++        return 0;
++    }
++    swprintf(out, MAX_PATH, L"%ls\\out", piper_dir);
++    CreateDirectoryW(out, NULL);
++    swprintf(cmd, 1024, L"\"%ls\" --model %ls --output_dir out --json-input --length_scale %.2f --sentence_silence 0.15 -q",
++             exe, pp->model, 100.0 / (speed > 0 ? speed : 100));
++    SECURITY_ATTRIBUTES sa = {sizeof sa, NULL, TRUE};
++    HANDLE in_r, in_w, out_r, out_w;
++    if (!CreatePipe(&in_r, &in_w, &sa, 0)) return piper_failed = 1, 0;
++    if (!CreatePipe(&out_r, &out_w, &sa, 0)) return CloseHandle(in_r), CloseHandle(in_w), piper_failed = 1, 0;
++    SetHandleInformation(in_w, HANDLE_FLAG_INHERIT, 0);
++    SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
++    STARTUPINFOW si = {sizeof si};
++    si.dwFlags = STARTF_USESTDHANDLES;
++    si.hStdInput = in_r, si.hStdOutput = out_w;
++    si.hStdError = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, NULL);
++    PROCESS_INFORMATION pi;
++    const BOOL ok = CreateProcessW(exe, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, piper_dir, &si, &pi);
++    CloseHandle(in_r), CloseHandle(out_w), CloseHandle(si.hStdError);
++    if (!ok) {
++        hos_log("voice: piper did not start (error %lu): the Windows voice instead", GetLastError());
++        CloseHandle(in_w), CloseHandle(out_r);
++        return piper_failed = 1, 0;
++    }
++    CloseHandle(pi.hThread);
++    pp->proc = pi.hProcess, pp->in = in_w, pp->out = out_r, pp->speed = speed;
++    hos_log("voice: natural voice (piper, %ls) ready at %d%% speed", pp->model, speed);
++    return 1;
++}
++/* speaks the words; returns how long the clip is in ns, 0 when piper failed */
++/* one sentence through piper: its samples (16-bit mono 22050 Hz) added to *pcm; 0 when piper failed */
++static int piper_sentence(Piper *pp, const char *u8, int speaker, short **pcm, int *n, int *cap) {
++    static char line[MAXT * 6];
++    int m = snprintf(line, 32, "{\"text\": \"");
++    for (const char *c = u8; *c && m < (int)sizeof line - 48; c++) {   /* (JSON: quotes and backslashes escaped) */
++        if (*c == '"' || *c == '\\') line[m++] = '\\';
++        line[m++] = *c;
++    }
++    m += speaker >= 0 ? snprintf(line + m, 48, "\", \"speaker_id\": %d}\n", speaker) : snprintf(line + m, 48, "\"}\n");
++    DWORD wrote;
++    if (!WriteFile(pp->in, line, (DWORD)m, &wrote, NULL)) { piper_stop_process(pp); return 0; }
++    char path[MAX_PATH * 2];
++    int k = 0;
++    for (;;) {   /* (one line back: the .wav's path) */
++        char ch;
++        DWORD got;
++        if (!ReadFile(pp->out, &ch, 1, &got, NULL) || !got) { hos_log("voice: piper stopped"); piper_stop_process(pp); return 0; }
++        if (ch == '\n') break;
++        if (ch != '\r' && k < (int)sizeof path - 1) path[k++] = ch;
++    }
++    path[k] = 0;
++    wchar_t wav[MAX_PATH];
++    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wav, MAX_PATH)) return 0;
++    if (wav[0] && wav[1] != L':') {   /* (relative to piper's folder) */
++        wchar_t full[MAX_PATH];
++        swprintf(full, MAX_PATH, L"%ls\\%ls", piper_dir, wav);
++        wcscpy(wav, full);
++    }
++    FILE *f = _wfopen(wav, L"rb");
++    if (!f) return 0;
++    fseek(f, 0, SEEK_END);
++    const long size = ftell(f);
++    fseek(f, 44, SEEK_SET);
++    const int got = size > 44 ? (int)((size - 44) / 2) : 0;
++    if (*n + got > *cap) {
++        *cap = (*n + got) * 2 + 22050;
++        short *p2 = realloc(*pcm, (size_t)*cap * sizeof(short));
++        if (!p2) return fclose(f), DeleteFileW(wav), 0;
++        *pcm = p2;
++    }
++    const int r = (int)fread(*pcm + *n, 2, (size_t)got, f);
++    fclose(f);
++    DeleteFileW(wav);
++    *n += r;
++    return 1;
++}
++
++/* the sentence's tone, by how it ends: "!" a little faster, higher and louder; "?" its last part rising; "..." a longer
++   pause after. Done on the samples from `from` on: resampled at a rate (above 1 = shorter and higher) */
++static double voice_shift = 1.0;   /* (the whole voice raised: Link's; set around piper_say) */
++static void tone(short *pcm, int from, int *n, int excited, int asks) {
++    const int len = *n - from;
++    if (len <= 0 || (!excited && !asks && voice_shift == 1.0)) return;
++    short *src = malloc((size_t)len * sizeof(short));
++    if (!src) return;
++    memcpy(src, pcm + from, (size_t)len * sizeof(short));
++    const float gain = excited ? 1.3f : 1.0f;
++    double pos = 0;
++    int o = 0;
++    while (pos < len - 1 && o < len) {
++        const double f = pos / len;
++        double rate = (excited ? 1.07 : 1.0) * voice_shift;
++        if (asks && f > 0.55) rate *= 1.0 + 0.16 * (f - 0.55) / 0.45;   /* (the end rising, as a question) */
++        const int i = (int)pos;
++        const double t = pos - i;
++        float v = (float)((1 - t) * src[i] + t * src[i + 1]) * gain;
++        if (v > 32767) v = 32767;
++        if (v < -32768) v = -32768;
++        pcm[from + o++] = (short)v;
++        pos += rate;
++    }
++    *n = from + o;
++    free(src);
++}
++
++/* speaks the words, a sentence at a time; returns how long it is in ns, 0 when piper failed */
++static int64_t piper_say(Piper *pp, const wchar_t *words, int speaker) {
++    static char u8[MAXT * 3];
++    if (WideCharToMultiByte(CP_UTF8, 0, words, -1, u8, sizeof u8, NULL, NULL) <= 1) return 0;
++    static short *pcm;
++    static int cap;
++    int n = 0;
++    PlaySoundW(NULL, NULL, 0);   /* (before pcm is written again: PlaySound reads it while it plays) */
++    char *c = u8;
++    while (*c) {
++        while (*c == ' ') c++;
++        if (!*c) break;
++        char *e = c;   /* (to the end of the sentence: its . ! ? and any more of them, then a space or the end) */
++        while (*e && !(strchr(".!?", *e) && (!e[1] || e[1] == ' ' || strchr(".!?\"'", e[1])))) e++;
++        while (*e && strchr(".!?\"'", *e)) e++;
++        const char keep = *e;
++        *e = 0;
++        const int excited = strchr(c, '!') != NULL, asks = strchr(c, '?') != NULL, trails = strstr(c, "...") != NULL;
++        const int from = n;
++        if (!piper_sentence(pp, c, speaker, &pcm, &n, &cap)) return 0;
++        tone(pcm, from, &n, excited, asks);
++        const int pause = trails ? 22050 * 45 / 100 : 0;   /* (piper ends each sentence with its own short pause) */
++        if (pause && n + pause <= cap) memset(pcm + n, 0, (size_t)pause * sizeof(short)), n += pause;
++        *e = keep;
++        c = e;
++    }
++    if (!n) return 0;
++    static unsigned char *wav;
++    static size_t wav_cap;
++    const size_t bytes = (size_t)n * 2;
++    if (bytes + 44 > wav_cap) {
++        unsigned char *w2 = realloc(wav, bytes + 44);
++        if (!w2) return 0;
++        wav = w2, wav_cap = bytes + 44;
++    }
++    const uint32_t rate = 22050, riff = (uint32_t)bytes + 36, fmt = 16, br = rate * 2, data = (uint32_t)bytes;
++    const uint16_t pcm_fmt = 1, ch = 1, align = 2, bits = 16;
++    memcpy(wav, "RIFF", 4), memcpy(wav + 4, &riff, 4), memcpy(wav + 8, "WAVEfmt ", 8), memcpy(wav + 16, &fmt, 4);
++    memcpy(wav + 20, &pcm_fmt, 2), memcpy(wav + 22, &ch, 2), memcpy(wav + 24, &rate, 4), memcpy(wav + 28, &br, 4);
++    memcpy(wav + 32, &align, 2), memcpy(wav + 34, &bits, 2), memcpy(wav + 36, "data", 4), memcpy(wav + 40, &data, 4);
++    memcpy(wav + 44, pcm, bytes);
++    if (!PlaySoundW((LPCWSTR)wav, NULL, SND_MEMORY | SND_ASYNC | SND_NODEFAULT)) {
++        hos_log("voice: PlaySound could not play the line");
++        return 0;
++    }
++    return (int64_t)n * 1000000000LL / 22050;
++}
++#include "oot_voice_cast.h"
++/* who speaks: the message object's +0x28 is the event's actors, slots 0x60 apart from +0x40, each with its name at +0x20
++   ("Npc_Hylia_Soldier_001"; found 2026-11-12 with a soldier's box up); the first Npc_ one */
++static int speaker_name(uint64_t obj, char *out, int max) {
++    const uint64_t arr = g64(obj + 0x28);
++    if (!in_heap(arr)) return 0;
++    for (int i = 0; i < 8; i++) {
++        const uint64_t slot = g64(arr + 0x40 + 0x60 * i);
++        if (!in_heap(slot)) continue;
++        const uint64_t nm = g64(slot + 0x20);
++        if (!in_heap(nm)) continue;
++        int k = 0;
++        for (; k < max - 1; k++) {
++            const char ch = *(const char *)A64_PTR(nm + k);
++            if (!ch) break;
++            out[k] = ch;
++        }
++        out[k] = 0;
++        if (!strncmp(out, "Npc_", 4)) return 1;
++    }
++    return 0;
++}
++/* the voice for a speaker: m man, f woman, b boy, g girl; 0 unknown (the main voice) */
++static char speaker_kind(const char *name) {
++    static const struct { const char *part; char kind; } named[] = {
++        {"Saria", 'g'}, {"Fado", 'g'}, {"Malon_Child", 'g'}, {"Ruto_Child", 'g'}, {"Zelda_Child", 'g'}, {"Mido", 'b'},
++        {"Malon", 'f'}, {"Impa", 'f'}, {"Zelda", 'f'}, {"Ruto", 'f'}, {"Nabooru", 'f'}, {"Sheik", 'f'}, {"GreatFairy", 'f'},
++        {"Twinrova", 'f'}, {"Navi", 'f'}, {"Ganondorf", 'm'}, {"Darunia", 'm'}, {"Talon", 'm'}, {"Ingo", 'm'},
++        {"Dampe", 'm'}, {"KingZora", 'm'}, {"Kaepora", 'm'}, {"Rauru", 'm'}, {"Carpenter", 'm'}, {"Soldier", 'm'},
++        {"SkullKid", 'b'}, {"SkullChild", 'b'}, {"DekuTree", 'b'}, {"Pierre", 'm'}, {"GuidePoe", 'm'}};
++    for (size_t i = 0; i < sizeof named / sizeof *named; i++)
++        if (strstr(name, named[i].part)) return named[i].kind;
++    size_t best = 0;
++    char kind = 0;
++    for (size_t i = 0; i < sizeof cast / sizeof *cast; i++) {   /* (the longest table name that starts the speaker's) */
++        const size_t l = strlen(cast[i].name);
++        if (l > best && !strncmp(name, cast[i].name, l)) best = l, kind = cast[i].kind;
++    }
++    if (kind) return kind;
++    if (!strncmp(name, "Npc_Goron", 9) || !strncmp(name, "Npc_Zora", 8)) return 'm';
++    if (!strncmp(name, "Npc_Gerudo", 10)) return 'f';
++    if (!strncmp(name, "Npc_Kokiri", 10)) return 'b';
++    return 0;
++}
++/* a voice of the many-voiced model for this speaker: the same one each time, from voices measured by pitch */
++static int speaker_voice(const char *name, char kind) {
++    static const short man[] = {8, 36, 48, 52, 124, 132, 156, 248, 272, 288, 296, 332, 380, 388, 400, 428, 432, 452, 496, 500,
++                                512, 520, 528, 544, 552, 564, 568, 596, 636, 660, 680, 684, 700, 704, 720, 724, 736, 740};
++    static const short woman[] = {4, 12, 40, 76, 108, 128, 164, 180, 188, 192, 228, 252, 280, 316, 336, 340, 344, 348, 352,
++                                  372, 384, 412, 420, 424, 444, 464, 532, 560, 576, 580, 588, 628, 656, 708, 764, 820};
++    static const short girl[] = {20, 60, 68, 100, 140, 148, 172, 396, 408, 448, 488, 548, 556, 624, 664, 796, 840};
++    static const short boy[] = {0, 56, 64, 80, 96, 112, 120, 144, 160, 184, 196, 220, 224, 236, 240, 244, 260, 268, 276, 292};
++    uint32_t h = 2166136261u;
++    for (const char *c = name; *c; c++) h = (h ^ (unsigned char)*c) * 16777619u;
++    switch (kind) {
++    case 'm': return man[h % (sizeof man / sizeof *man)];
++    case 'f': return woman[h % (sizeof woman / sizeof *woman)];
++    case 'g': return girl[h % (sizeof girl / sizeof *girl)];
++    default: return boy[(h >> 8) % (sizeof boy / sizeof *boy)];
++    }
++}
++
++static void hush(ISpVoice *v) {
++    ISpVoice_Speak(v, L"", SPF_ASYNC | SPF_PURGEBEFORESPEAK, NULL);
++    PlaySoundW(NULL, NULL, 0);
++}
++
++/* the renderer's "press next" rainbow frame (gpu/vk/vk_menu.cpp, mkwvk_voice_glow) */
++static volatile int *glow_flag;
++static int64_t glow_since;
++static void glow(int on) {
++    if (!glow_flag) {
++        HMODULE m = GetModuleHandleA("hookshot_vk.dll");
++        if (m) glow_flag = (volatile int *)GetProcAddress(m, "mkwvk_voice_glow");
++        if (!glow_flag) return;
++    }
++    if (on && !*glow_flag) glow_since = hos_now_ns();
++    *glow_flag = on;
++}
++
++/* says the words: the speaker's own voice (or the main one), else the Windows voice. who: 1 the box's speaker, 0 the
++   Link (the game's choices) */
++/* Link's voice for his replies (the choices): one boy voice of the many-voiced model, the same all game. (An adult Link
++   voice would go here once his age can be read.) */
++/* (candidates: the brightest of the model's young-sounding voices, by measured pitch; Insert > Audio > Link's voice) */
++static const short link_voices[] = {220, 292, 144, 0, 224, 112};
++#define LINK_VOICE link_voices[link_pick()]
++static int link_pick(void) {
++    const int i = rx_option(OPT_LINK_VOICE, 0);
++    return i < 0 ? 0 : i > 5 ? 5 : i;
++}
++static void speak(ISpVoice *v, const wchar_t *words, int who_speaks, int *speaking, int64_t *piper_until) {
++    static int said;
++    const int kind = rx_option(OPT_VOICE_KIND, 0), speed = rx_option(OPT_VOICE_SPEED, 100);
++    int64_t dur = 0;
++    char who[96] = "";
++    char sk = 0;
++    const uint64_t o2 = g64(MSG_HOLDER);
++    if (who_speaks && in_heap(o2) && speaker_name(o2, who, sizeof who)) sk = speaker_kind(who);
++    if (kind == 0 && sk && piper_start(&piper_cast, speed)) dur = piper_say(&piper_cast, words, speaker_voice(who, sk));
++    if (kind == 0 && !who_speaks && piper_start(&piper_cast, speed)) {   /* (Link's replies: his own voice, always) */
++        static int told = -1;
++        const int semis = rx_option(OPT_LINK_PITCH, 3);
++        if (told != LINK_VOICE * 16 + semis) told = LINK_VOICE * 16 + semis, hos_log("voice: Link's voice is speaker %d, +%d semitones", LINK_VOICE, semis);
++        voice_shift = pow(2.0, (semis < 0 ? 0 : semis > 6 ? 6 : semis) / 12.0);
++        dur = piper_say(&piper_cast, words, LINK_VOICE);
++        voice_shift = 1.0;
++        strcpy(who, "Link"), sk = 'b';
++    }
++    if (kind == 0 && dur <= 0 && piper_start(&piper_main, speed)) dur = piper_say(&piper_main, words, -1);
++    if (dur > 0) {
++        if (said < 40) said++, hos_log("voice (natural, %s %c): \"%.70ls\"", who[0] ? who : "?", sk ? sk : '-', words);
++        *piper_until = hos_now_ns() + dur + 200000000LL, *speaking = 2;
++    } else {
++        ISpVoice_SetRate(v, (speed - 100) / 10);
++        const HRESULT hr = ISpVoice_Speak(v, words, SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML, NULL);
++        if (said < 40) said++, hos_log("voice (Windows, %#lx): \"%.80ls\"", (unsigned long)hr, words);
++        *speaking = 1;
++    }
++}
++
++/* The choice menu (found 2026-11-12 on "Death Mountain? / Bye."): global 0x84ea4510 -> +0x200 -> +0x1b8 is the choice
++   window; its buttons at +0x418 + 0x20*i, each pointing into a block that holds the choice's text object {u32 length,
++   ..., text pointer at +0x40} somewhere in its first 0x2000 bytes; the highlighted one (from 0) at window +0x85c.
++   Returns a signature of the choices (0: no menu); the list as "A. B. C." and/or the highlighted one's words. */
++#define CHOICE_ROOT 0x84ea4510ULL
++static int safe_read(uint64_t a, void *out, size_t n) {   /* (never faults: a menu's memory may be half gone) */
++    SIZE_T got = 0;
++    return ReadProcessMemory(GetCurrentProcess(), A64_PTR(a), out, n, &got) && got == n;
++}
++static uint64_t s64(uint64_t a) { uint64_t v = 0; return safe_read(a, &v, 8) ? v : 0; }
++/* why the menu was not read, logged when it changes (so a run shows where it stops) */
++static void choice_why(int why, uint32_t a, uint32_t b) {
++    static int last = -1, told;
++    if (why == last || told >= 60) return;
++    last = why, told++;
++    static const char *const say[] = {"choice menu read", "choice window not found via 0x84ea4510 -> +0x200",
++                                      "choice window: no count/cursor", "choice window: count/cursor out of range",
++                                      "choice button not readable", "choice button: no text object", "choice text has no words"};
++    hos_log("voice: %s (last choice %u, cursor %u)", say[why], a, b);
++}
++static uint32_t choice_menu(wchar_t *list, int lmax, int *cursor, wchar_t *one, int omax) {
++    if (list && lmax) list[0] = 0;
++    if (one && omax) one[0] = 0;
++    const uint64_t r = s64(CHOICE_ROOT);
++    const uint64_t n = r ? s64(r + 0x200) : 0;
++    if (!n) return choice_why(1, 0, 0), 0;
++    const uint64_t w = n + 0x1b8;   /* (the window: +0x4d0 the last choice's index, +0x4e4 the highlighted one; seen with
++                                       3 choices (2) and 2 (1)) */
++    uint32_t last, cur;
++    if (!safe_read(w + 0x4d0, &last, 4) || !safe_read(w + 0x4e4, &cur, 4)) return choice_why(2, 0, 0), 0;
++    if (last < 1 || last > 3 || cur > last) return choice_why(3, last, cur), 0;
++    uint32_t sig = 2166136261u;
++    int l = 0;
++    static unsigned char blk[0x2048];
++    for (uint32_t i = 0; i <= last; i++) {
++        const uint64_t b = s64(w + 0x418 + 0x20 * i);
++        if (!b || !safe_read(b, blk, sizeof blk)) return choice_why(4, last, cur), 0;
++        unsigned char tx[256];
++        wchar_t wd[256];
++        int found = 0;   /* (the first candidate {length, ..., text at +0x40} whose text has words: junk can come first) */
++        for (uint32_t o = 0; o + 0x48 <= sizeof blk && !found; o += 8) {
++            uint32_t L;
++            uint64_t t;
++            memcpy(&L, blk + o, 4), memcpy(&t, blk + o + 0x40, 8);
++            if (L < 2 || L > 200 || !safe_read(t, tx, L + 1) || tx[L]) continue;
++            uint32_t k = 0;
++            while (k < L && (tx[k] >= 32 || tx[k] == 10 || tx[k] == 14) && tx[k] != 127) k++;
++            if (k == L && message_words(t, L, wd, 256)) found = 1;
++        }
++        if (!found) return choice_why(5, last, cur), 0;
++        for (const wchar_t *c = wd; *c; c++) sig = (sig ^ (uint32_t)*c) * 16777619u;
++        if (list && l < lmax - 4) {
++            l += swprintf(list + l, (size_t)(lmax - l), L"%ls%ls", l ? L" " : L"", wd);
++            const wchar_t e = l ? list[l - 1] : 0;
++            if (e != L'.' && e != L'?' && e != L'!' && l < lmax - 2) list[l++] = L'.', list[l] = 0;
++        }
++        if (one && i == cur) wcsncpy(one, wd, (size_t)omax - 1), one[omax - 1] = 0;
++    }
++    choice_why(0, last, cur);
++    *cursor = (int)cur;
++    return sig;
++}
++
++static DWORD WINAPI voice_thread(void *arg) {
++    (void)arg;
++    if (FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED))) return 0;
++    ISpVoice *v = NULL;
++    if (FAILED(CoCreateInstance(&my_CLSID_SpVoice, NULL, CLSCTX_ALL, &my_IID_ISpVoice, (void **)&v)) || !v) {
++        hos_log("voice: no Windows voice (SAPI) here; read-aloud off");
++        return 0;
++    }
++    const char *r = getenv("HOS_VOICE_RATE");
++    ISpVoice_SetRate(v, r && *r ? atoi(r) : -1);
++    hos_log("voice: read-aloud ready (Windows voice, the dialogue box's message; HOS_VOICE=0 turns it off)");
++    uint64_t last_text = 0;
++    uint32_t last_hash = 0;
++    int64_t pending_at = 0;
++    int speaking = 0;   /* (1 the Windows voice, 2 piper until piper_until) */
++    int64_t piper_until = 0;
++    wchar_t words[MAXT];
++    for (;;) {
++        Sleep(100);
++        const int64_t now = hos_now_ns();
++        const uint64_t obj = g64(MSG_HOLDER);
++        static uint64_t seen_obj = 1;
++        static int diag;
++        if (obj != seen_obj && diag < 40) {
++            diag++, seen_obj = obj;
++            hos_log("voice: message object %#llx text %#llx len %u", (unsigned long long)obj,
++                    in_heap(obj) ? (unsigned long long)g64(obj + MSG_TEXT) : 0ULL, in_heap(obj) ? g32(obj + MSG_LEN) : 0u);
++        }
++        if (in_heap(obj)) {
++            /* (the message's pages are a ring of nodes {prev, next, flags, len, text...}; +0x58 is the first page's
++               text, +0x48 the page on show, 1 for the first: walk to it) */
++            uint64_t text = g64(obj + MSG_TEXT);
++            uint32_t len = g32(obj + MSG_LEN);
++            const uint32_t page = g32(obj + MSG_PAGE);
++            if (page > 1 && page < 64 && in_heap(text - 0x20)) {
++                const uint64_t first = text - 0x20, head = g64(first);
++                uint64_t node = first;
++                for (uint32_t k = 1; k < page && node; k++) {
++                    node = in_heap(node) ? g64(node + 8) : 0;
++                    if (node == head || node == first || !in_heap(node)) node = 0;
++                }
++                if (node) text = node + 0x20, len = g32(node + 0x18);
++            }
++            if (in_heap(text) && len > 0 && len < 8192) {
++                uint32_t h = 2166136261u;
++                for (uint32_t i = 0; i < len && i < 4096; i++) h = (h ^ *(const unsigned char *)A64_PTR(text + i)) * 16777619u;
++                if (text != last_text || h != last_hash) {
++                    if (diag < 40) diag++, hos_log("voice: new text at %#llx, %u bytes", (unsigned long long)text, len);
++                    static int first = 1;   /* (the message already there when the thread first looks is not new) */
++                    last_text = text, last_hash = h;
++                    glow(0);
++                    if (speaking) hush(v), speaking = 0;   /* (a new page: the last one's voice stops) */
++                    /* (closing the box drops the page back to 1: the same message's first page again is not new) */
++                    static uint32_t page1_hash, last_page;
++                    const uint32_t pg = page < 64 ? page : 1;
++                    const int back_to_start = pg <= 1 && last_page > 1 && h == page1_hash;
++                    if (pg <= 1) page1_hash = h;
++                    last_page = pg;
++                    if (back_to_start) {
++                        if (diag < 40) diag++, hos_log("voice: back to page 1 of the same message (box closed), not read again");
++                        pending_at = 0;
++                    } else if (message_words(text, len, words, MAXT)) pending_at = now;
++                    first = 0;
++                }
++            }
++        }
++        if (!rx_option(OPT_VOICE_ON, 1)) {   /* (the Insert menu's Read aloud row off) */
++            pending_at = 0;
++            if (speaking) hush(v), speaking = 0;
++            glow(0);
++        }
++        if (pending_at && now - pending_at > 300000000LL) {
++            pending_at = 0;
++            /* (the same prompt again within one conversation, as after a choice is answered: read once; 45 s later it is a
++               new conversation) */
++            static uint32_t heard[16];
++            static int64_t heard_at[16];
++            uint32_t wh = 2166136261u;
++            for (const wchar_t *w = words; *w; w++) wh = (wh ^ (uint32_t)*w) * 16777619u;
++            int again = 0, slot = 0;
++            for (int q = 0; q < 16; q++) {
++                if (heard[q] == wh && now - heard_at[q] < 45000000000LL) again = 1, slot = q;
++                else if (heard_at[q] < heard_at[slot]) slot = q;
++            }
++            heard[slot] = wh, heard_at[slot] = now;
++            if (again) {
++                static int told;
++                if (told < 20) told++, hos_log("voice: heard just now, not read again: \"%.50ls\"", words);
++                glow(rx_option(OPT_VOICE_GLOW, 1));
++                continue;
++            }
++            static int said;
++            if (hos_voiced_line_ns > now - 2400000000LL) {
++                if (said < 30) said++, hos_log("voice: skipped, the game voices it: \"%.60ls\"", words);
++            } else {
++                speak(v, words, 1, &speaking, &piper_until);
++            }
++        }
++        {   /* (Link's voice or pitch changed in the menu: a sample) */
++            static int lv = -1, lp = -1;
++            const int v2 = rx_option(OPT_LINK_VOICE, 0), p2 = rx_option(OPT_LINK_PITCH, 3);
++            if (lv >= 0 && (v2 != lv || p2 != lp) && rx_option(OPT_VOICE_ON, 1)) {
++                if (speaking) hush(v), speaking = 0;
++                speak(v, L"Hi! I'm Link! Let's go!", 0, &speaking, &piper_until);
++            }
++            lv = v2, lp = p2;
++        }
++        /* the choice list: read once after its prompt, then the highlighted choice as the cursor moves */
++        {
++            static uint32_t shown_sig;
++            static int shown_cursor = -1, choices_due;
++            static wchar_t list[MAXT];
++            int cursor;
++            const uint32_t sig = in_heap(obj) ? choice_menu(list, MAXT, &cursor, NULL, 0) : 0;
++            if (!in_heap(obj)) shown_sig = 0, choices_due = 0;   /* (no box: the next menu is new, even the same one) */
++            if (sig && sig != shown_sig) {
++                shown_sig = sig, shown_cursor = cursor, choices_due = 1;
++                static int lg;
++                if (lg < 20) lg++, hos_log("voice: choices %08x, cursor %d: \"%.80ls\"", sig, cursor, list);
++            } else if (sig && cursor != shown_cursor && rx_option(OPT_VOICE_ON, 1)) {
++                shown_cursor = cursor, choices_due = 0, pending_at = 0;
++                wchar_t one[256];
++                if (choice_menu(NULL, 0, &cursor, one, 256)) {
++                    glow(0);
++                    if (speaking) hush(v), speaking = 0;
++                    speak(v, one, 0, &speaking, &piper_until);
++                }
++            }
++            if (choices_due && !pending_at && !speaking && rx_option(OPT_VOICE_ON, 1)) {   /* (after the prompt) */
++                choices_due = 0;
++                glow(0);
++                speak(v, list, 0, &speaking, &piper_until);
++            }
++        }
++        if (speaking && hos_voiced_line_ns > now - 150000000LL) {   /* (the game began a voiced line: ours stops) */
++            hush(v);
++            speaking = 0;
++        }
++        if (speaking == 1 && !pending_at) {   /* (the page read to its end: the rainbow says "press next") */
++            SPVOICESTATUS st;
++            if (SUCCEEDED(ISpVoice_GetStatus(v, &st, NULL)) && st.dwRunningState == SPRS_DONE)
++                speaking = 0, glow(rx_option(OPT_VOICE_GLOW, 1));
++        }
++        if (speaking == 2 && !pending_at && now > piper_until) speaking = 0, glow(rx_option(OPT_VOICE_GLOW, 1));
++        if (glow_flag && *glow_flag && now - glow_since > 60000000000LL) glow(0);   /* (a minute: whatever it was, gone) */
++    }
++}
++
++void hos_oot_voice_start(void) {
++    static volatile LONG started;
++    if (InterlockedExchange(&started, 1)) return;
++    const char *e = getenv("HOS_VOICE");
++    if (e && *e && atoi(e) == 0) return;
++    CloseHandle(CreateThread(NULL, 0, voice_thread, NULL, 0, NULL));
++}
++void hos_oot_voice_pane(Ctx *c, uint64_t pane) { (void)c, (void)pane; hos_oot_voice_start(); }
++#else
++void hos_oot_voice_start(void) {}
++void hos_oot_voice_pane(Ctx *c, uint64_t pane) { (void)c, (void)pane; }
++#endif
+diff --git a/host/oot_voice_cast.h b/host/oot_voice_cast.h
+new file mode 100644
+index 0000000..0ff297a
+--- /dev/null
++++ b/host/oot_voice_cast.h
+@@ -0,0 +1,196 @@
++/* (local, generated from romfs Pack/Actor: each NPC actor's model, Hylia/Kokiri M* male W* female, MC boy, WC girl,
++   Goron male, Gerudo female) the speaker's voice: m man, f woman, b boy, g girl */
++static const struct { const char *name; char kind; } cast[] = {
++    {"Npc_Gerudo_001", 'f'},
++    {"Npc_Gerudo_002", 'f'},
++    {"Npc_Gerudo_003", 'f'},
++    {"Npc_Gerudo_004", 'f'},
++    {"Npc_Gerudo_005", 'f'},
++    {"Npc_Gerudo_006", 'f'},
++    {"Npc_Gerudo_007", 'f'},
++    {"Npc_Gerudo_008", 'f'},
++    {"Npc_Gerudo_009", 'f'},
++    {"Npc_Gerudo_010", 'f'},
++    {"Npc_Gerudo_011", 'f'},
++    {"Npc_Gerudo_012", 'f'},
++    {"Npc_Gerudo_013", 'f'},
++    {"Npc_Gerudo_014", 'f'},
++    {"Npc_Gerudo_015", 'f'},
++    {"Npc_Gerudo_016", 'f'},
++    {"Npc_Gerudo_017", 'f'},
++    {"Npc_Gerudo_018", 'f'},
++    {"Npc_Gerudo_020", 'f'},
++    {"Npc_Gerudo_FortressGuard", 'f'},
++    {"Npc_Gerudo_GEN_Default", 'f'},
++    {"Npc_Gerudo_GEN_SecurityGuard", 'f'},
++    {"Npc_Gerudo_GEU_Default", 'f'},
++    {"Npc_Gerudo_Nabooru", 'f'},
++    {"Npc_Goron_001", 'm'},
++    {"Npc_Goron_002", 'm'},
++    {"Npc_Goron_003", 'm'},
++    {"Npc_Goron_004", 'm'},
++    {"Npc_Goron_005", 'm'},
++    {"Npc_Goron_006", 'm'},
++    {"Npc_Goron_007", 'm'},
++    {"Npc_Goron_008", 'm'},
++    {"Npc_Goron_009", 'm'},
++    {"Npc_Goron_010", 'm'},
++    {"Npc_Goron_011_Shop", 'm'},
++    {"Npc_Goron_012", 'm'},
++    {"Npc_Goron_Biggoron", 'm'},
++    {"Npc_Goron_Darunia", 'm'},
++    {"Npc_Goron_DaruniaJr", 'm'},
++    {"Npc_Goron_GON_Default", 'm'},
++    {"Npc_Goron_GOU_Default", 'm'},
++    {"Npc_Goron_Medigoron", 'm'},
++    {"Npc_Hylia_001", 'm'},
++    {"Npc_Hylia_002", 'm'},
++    {"Npc_Hylia_003", 'm'},
++    {"Npc_Hylia_004", 'm'},
++    {"Npc_Hylia_005", 'm'},
++    {"Npc_Hylia_006", 'm'},
++    {"Npc_Hylia_007", 'm'},
++    {"Npc_Hylia_008", 'm'},
++    {"Npc_Hylia_009", 'm'},
++    {"Npc_Hylia_010", 'm'},
++    {"Npc_Hylia_011", 'm'},
++    {"Npc_Hylia_012", 'm'},
++    {"Npc_Hylia_013", 'm'},
++    {"Npc_Hylia_014", 'm'},
++    {"Npc_Hylia_015", 'm'},
++    {"Npc_Hylia_016", 'm'},
++    {"Npc_Hylia_017", 'm'},
++    {"Npc_Hylia_018_Shop", 'm'},
++    {"Npc_Hylia_019_Shop", 'm'},
++    {"Npc_Hylia_020_Shop", 'm'},
++    {"Npc_Hylia_021_Shop", 'm'},
++    {"Npc_Hylia_022_Shop", 'm'},
++    {"Npc_Hylia_023_Shop", 'm'},
++    {"Npc_Hylia_024", 'm'},
++    {"Npc_Hylia_025", 'm'},
++    {"Npc_Hylia_026", 'm'},
++    {"Npc_Hylia_027", 'm'},
++    {"Npc_Hylia_028", 'm'},
++    {"Npc_Hylia_029", 'm'},
++    {"Npc_Hylia_030", 'm'},
++    {"Npc_Hylia_031", 'm'},
++    {"Npc_Hylia_032", 'm'},
++    {"Npc_Hylia_033", 'm'},
++    {"Npc_Hylia_034", 'm'},
++    {"Npc_Hylia_035", 'm'},
++    {"Npc_Hylia_036", 'm'},
++    {"Npc_Hylia_037", 'm'},
++    {"Npc_Hylia_038", 'm'},
++    {"Npc_Hylia_039", 'm'},
++    {"Npc_Hylia_040", 'm'},
++    {"Npc_Hylia_041", 'm'},
++    {"Npc_Hylia_042", 'm'},
++    {"Npc_Hylia_043", 'm'},
++    {"Npc_Hylia_044", 'm'},
++    {"Npc_Hylia_045", 'm'},
++    {"Npc_Hylia_046_BottleShop", 'm'},
++    {"Npc_Hylia_047", 'm'},
++    {"Npc_Hylia_048_BottleShop", 'm'},
++    {"Npc_Hylia_049", 'f'},
++    {"Npc_Hylia_050", 'f'},
++    {"Npc_Hylia_051", 'f'},
++    {"Npc_Hylia_052", 'f'},
++    {"Npc_Hylia_053", 'f'},
++    {"Npc_Hylia_054", 'f'},
++    {"Npc_Hylia_055", 'f'},
++    {"Npc_Hylia_056", 'f'},
++    {"Npc_Hylia_057", 'f'},
++    {"Npc_Hylia_058", 'f'},
++    {"Npc_Hylia_059", 'f'},
++    {"Npc_Hylia_060", 'f'},
++    {"Npc_Hylia_061", 'f'},
++    {"Npc_Hylia_062", 'f'},
++    {"Npc_Hylia_063", 'f'},
++    {"Npc_Hylia_064", 'f'},
++    {"Npc_Hylia_065", 'f'},
++    {"Npc_Hylia_066", 'f'},
++    {"Npc_Hylia_067_Shop", 'f'},
++    {"Npc_Hylia_Dampe_001", 'm'},
++    {"Npc_Hylia_Dampe_002", 'm'},
++    {"Npc_Hylia_Fishman_001", 'm'},
++    {"Npc_Hylia_Impa", 'f'},
++    {"Npc_Hylia_ImperialSoldier_001", 'm'},
++    {"Npc_Hylia_ImperialSoldier_002", 'm'},
++    {"Npc_Hylia_ImperialSoldier_003", 'm'},
++    {"Npc_Hylia_Ingo_001", 'm'},
++    {"Npc_Hylia_Ingo_002", 'm'},
++    {"Npc_Hylia_Ingo_003", 'm'},
++    {"Npc_Hylia_MF_Default", 'm'},
++    {"Npc_Hylia_ML_Default", 'm'},
++    {"Npc_Hylia_MM_Default", 'm'},
++    {"Npc_Hylia_MN_0XX_Default", 'm'},
++    {"Npc_Hylia_MN_1XX_Default", 'm'},
++    {"Npc_Hylia_MO_Default", 'm'},
++    {"Npc_Hylia_MSP_Default", 'm'},
++    {"Npc_Hylia_MS_Default", 'm'},
++    {"Npc_Hylia_MU_Default", 'm'},
++    {"Npc_Hylia_MX_Default", 'm'},
++    {"Npc_Hylia_Malon", 'f'},
++    {"Npc_Hylia_RunningMan", 'm'},
++    {"Npc_Hylia_Sheik", 'f'},
++    {"Npc_Hylia_Soldier_001", 'm'},
++    {"Npc_Hylia_Soldier_002", 'm'},
++    {"Npc_Hylia_Soldier_003", 'm'},
++    {"Npc_Hylia_Soldier_004", 'm'},
++    {"Npc_Hylia_Soldier_005", 'm'},
++    {"Npc_Hylia_Soldier_006", 'm'},
++    {"Npc_Hylia_Soldier_007", 'm'},
++    {"Npc_Hylia_Soldier_008", 'm'},
++    {"Npc_Hylia_Soldier_009", 'm'},
++    {"Npc_Hylia_Soldier_010", 'm'},
++    {"Npc_Hylia_Soldier_011", 'm'},
++    {"Npc_Hylia_Soldier_012", 'm'},
++    {"Npc_Hylia_Soldier_013", 'm'},
++    {"Npc_Hylia_Soldier_015", 'm'},
++    {"Npc_Hylia_Soldier_016", 'm'},
++    {"Npc_Hylia_Soldier_017", 'm'},
++    {"Npc_Hylia_Soldier_018", 'm'},
++    {"Npc_Hylia_Soldier_019", 'm'},
++    {"Npc_Hylia_Soldier_021", 'm'},
++    {"Npc_Hylia_Soldier_023", 'm'},
++    {"Npc_Hylia_Soldier_024", 'm'},
++    {"Npc_Hylia_Soldier_025", 'm'},
++    {"Npc_Hylia_Soldier_026", 'm'},
++    {"Npc_Hylia_Soldier_027", 'm'},
++    {"Npc_Hylia_Soldier_029", 'm'},
++    {"Npc_Hylia_Soldier_SecurityGuard", 'm'},
++    {"Npc_Hylia_Talon", 'm'},
++    {"Npc_Hylia_WF_Default", 'f'},
++    {"Npc_Hylia_WN_Default", 'f'},
++    {"Npc_Hylia_WO_Default", 'f'},
++    {"Npc_Hylia_WU_Default", 'f'},
++    {"Npc_Hylia_WX_Default", 'f'},
++    {"Npc_Hylia_Zelda", 'f'},
++    {"Npc_Kokiri_001_Shop", 'b'},
++    {"Npc_Kokiri_002", 'b'},
++    {"Npc_Kokiri_003", 'b'},
++    {"Npc_Kokiri_004", 'b'},
++    {"Npc_Kokiri_005", 'b'},
++    {"Npc_Kokiri_006", 'b'},
++    {"Npc_Kokiri_007", 'b'},
++    {"Npc_Kokiri_008", 'b'},
++    {"Npc_Kokiri_009", 'g'},
++    {"Npc_Kokiri_010", 'g'},
++    {"Npc_Kokiri_011", 'g'},
++    {"Npc_Kokiri_012", 'g'},
++    {"Npc_Kokiri_013", 'g'},
++    {"Npc_Kokiri_Fado", 'g'},
++    {"Npc_Kokiri_MC_Blocker", 'b'},
++    {"Npc_Kokiri_MC_Default", 'b'},
++    {"Npc_Kokiri_Mido", 'b'},
++    {"Npc_Kokiri_Saria", 'g'},
++    {"Npc_Kokiri_WC_Default", 'g'},
++    {"Npc_SkullChild_001", 'm'},
++    {"Npc_SkullChild_002", 'm'},
++    {"Npc_SkullChild_003", 'm'},
++    {"Npc_SkullChild_004", 'm'},
++    {"Npc_SkullChild_005", 'm'},
++    {"Npc_SkullDad", 'm'},
++    {"Npc_SkullKid", 'b'},
++    {"Npc_Zora_Ruto", 'g'},
++};

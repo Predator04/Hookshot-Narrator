@@ -1,0 +1,70 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The add-on writes a line to `longshot_log.txt` (beside the game) for every step it takes, including
+        lines it chose not to read and why. That file usually contains the answer, so please include it.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+      placeholder: |
+        Talked to the shopkeeper. The first line was read aloud, the second was silent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines
+      description: >
+        From `longshot_log.txt` beside the game. The lines starting with `voice` are the relevant ones.
+        Paste them, or attach the whole file.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: longshot
+    attributes:
+      label: Longshot version
+      description: "`git describe --tags` in your Longshot folder, or the version shown in the game's menu."
+      placeholder: v3.0.0-rc.3
+    validations:
+      required: true
+
+  - type: input
+    id: narrator
+    attributes:
+      label: Longshot-Narrator version
+      placeholder: v2.0.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: voice
+    attributes:
+      label: Which voice is being used
+      description: >
+        The log says at startup. `natural voice (piper, …)` means Piper; if you only ever see
+        `read-aloud ready (Windows voice…)` and no Piper line when a character speaks, Piper is not being used.
+      options:
+        - Natural (Piper)
+        - Windows voice
+        - Custom
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: "`setup-voices.ps1 -Check` reports everything present"
+        - label: Read aloud is On under Insert → Audio

@@ -26,10 +26,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # (the progress bar makes Invoke-WebRequest far slower)
 
-# (the game folder: longshot.exe; hookshot.exe too, for anyone still on a Hookshot build)
-$exe = @('longshot.exe', 'hookshot.exe') | ForEach-Object { Join-Path $Game $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $exe) {
-    Write-Host "No longshot.exe or hookshot.exe in $Game." -ForegroundColor Red
+# (the built game folder is the one holding longshot.exe)
+$exe = Join-Path $Game 'longshot.exe'
+if (-not (Test-Path $exe)) {
+    Write-Host "No longshot.exe in $Game." -ForegroundColor Red
     Write-Host 'Point -Game at your BUILT game folder (the one make_game.py wrote with --out), not the source.' -ForegroundColor Red
     exit 1
 }

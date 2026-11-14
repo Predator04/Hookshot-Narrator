@@ -13,7 +13,7 @@ The folder must be a git checkout of the Longshot version this release supports 
 twice is harmless: it notices when the add-on is already in place.
 #>
 param(
-    [Parameter(Mandatory = $true)][Alias('Hookshot', 'Source')][string]$Longshot,
+    [Parameter(Mandatory = $true)][Alias('Source', 'Game')][string]$Longshot,
     [switch]$Uninstall
 )
 

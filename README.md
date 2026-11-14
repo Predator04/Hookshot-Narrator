@@ -93,12 +93,8 @@ cd Longshot
 git checkout v3.0.0-rc.3
 ```
 
-<details>
-<summary>Why not GitHub?</summary>
-
-Longshot continues [Hookshot](https://github.com/NotRexed/Hookshot), whose GitHub repository is gone. Longshot is
-the same repository under a new name, on Team MagicBean's own server, and it still carries Hookshot's original tags.
-</details>
+Longshot is developed by Team MagicBean on their own server at
+[git.magicbean.dev](https://git.magicbean.dev/MagicBeanDev/Longshot), not on GitHub.
 
 ### 2. Add Longshot-Narrator
 
@@ -246,9 +242,9 @@ Then build Longshot again. You can delete the `piper` folder next to `longshot.e
 
 ## Credits and licence
 
-- Hookshot and its contributors, and [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) (Team MagicBean),
-  who continue that work. This add-on builds on theirs.
+- [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) and its contributors. This add-on builds on their
+  work and would not exist without it.
 - [Piper](https://github.com/rhasspy/piper) for the natural voices, and the authors of the voice models.
 
-Longshot-Narrator is licensed under the GPL-3.0, the same as Longshot. See [LICENSE](LICENSE). It is not affiliated
-with Nintendo, with the Hookshot project, or with Team MagicBean.
+Longshot-Narrator is licensed under the GPL-3.0, the same as Longshot. See [LICENSE](LICENSE). It is an independent
+add-on, not affiliated with Nintendo or with Team MagicBean.

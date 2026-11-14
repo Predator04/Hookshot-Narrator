@@ -281,10 +281,10 @@ index 66dc08ee..b1f0d443 100644
         stepped, so that one's text is gone) */
 diff --git a/host/oot_voice.c b/host/oot_voice.c
 new file mode 100644
-index 00000000..f62629e2
+index 00000000..9a4f0878
 --- /dev/null
 +++ b/host/oot_voice.c
-@@ -0,0 +1,978 @@
+@@ -0,0 +1,977 @@
 +/* (local) Read-aloud: the lines characters say in their dialogue box, spoken with Windows' own voice (SAPI), for a player
 +   who cannot read yet.
 +
@@ -770,10 +770,9 @@ index 00000000..f62629e2
 +    PlaySoundW(NULL, NULL, 0);
 +}
 +
-+/* the renderer's back end: longshot_vk.dll (Longshot, v3.0.0 on), hookshot_vk.dll before */
++/* the renderer's back end, which exports the cue flag below */
 +static HMODULE vk_module(void) {
-+    HMODULE m = GetModuleHandleA("longshot_vk.dll");
-+    return m ? m : GetModuleHandleA("hookshot_vk.dll");
++    return GetModuleHandleA("longshot_vk.dll");
 +}
 +/* the renderer's "press next" rainbow frame (gpu/vk/vk_menu.cpp, mkwvk_voice_glow) */
 +static volatile int *glow_flag;

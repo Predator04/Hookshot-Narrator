@@ -13,7 +13,7 @@ Legend of Zelda: Ocarina of Time* (Nintendo Switch 2) that you build from your o
 Longshot-Narrator speaks every dialogue box aloud as it appears, gives each character a voice that suits them, and
 reads Link's reply choices in a voice of his own.
 
-> It was written for a five-year-old who wanted to play a game she couldn't read.
+> It was written for a child who wanted to play a game she couldn't read yet.
 > That one requirement — *she must never be stuck wondering whether it's her turn* — shaped most of the decisions
 > below, including the on-screen cues and the rule about when a line counts as already heard.
 

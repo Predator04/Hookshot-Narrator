@@ -35,7 +35,8 @@ for anyone who'd rather listen.
   while talking to someone a second time starts afresh, so you always hear their opening line again.
 - **Leaves the real voice acting alone.** Cutscenes the game voices itself are left to the actors.
 - **Press-next glow.** When a page has been read, a soft rainbow glow pulses round the screen's edge, so a player who
-  can't read knows it's time to press for the next page.
+  can't read knows it's time to press for the next page. Both cues can be set to one steady colour instead of the
+  rainbow.
 - **Settings in the game's Insert menu**, under **Audio**.
 
 ![A number the game fills in, read as part of the line](docs/screenshots/filled-in-number.webp)
@@ -50,6 +51,7 @@ Open the in-game menu (**Insert** or **F1**) and go to the **Audio** tab. Change
 | **Read-aloud voice** | Natural / Windows / Custom | Natural | *Natural* is the lifelike voice ([Piper](https://github.com/rhasspy/piper), runs on your PC). *Windows* is the voice built into Windows, used automatically if Piper isn't installed. *Custom* uses one Piper voice of your own for every line — put its `.onnx` and `.onnx.json` in the `piper\custom` folder next to `hookshot.exe`. |
 | **Read-aloud speed** | 50% – 200% | 100% | How fast lines are read. |
 | **Press-next glow** | Off / Screen edge / Arrow / Both | Both | The rainbow cues. *Screen edge*: the picture's rim glows once a page has been read, to show it's time to press on. *Arrow*: a chevron points at a reply menu, so a player knows the game is asking them to choose. *Both* does each, and is the default — *Arrow* on its own leaves a page that's only waiting to be turned with no cue. |
+| **Glow colour** | Rainbow / Gold / Green / Blue / Purple / Pink | Rainbow | What colour those cues are. *Rainbow* keeps turning through every hue, as it always did; any other holds one colour still, which is calmer to sit next to for a long session. (Gold is the subtlest — against sandy scenery like Kakariko it can almost disappear.) |
 | **Link's voice** | Voice 1 – 16 | Voice 1 | Which voice reads Link's choices. Changing it plays a sample. |
 | **Link's voice pitch** | Normal, +1 – +6 | +3 | How much higher Link's voice is, in semitones, so he sounds younger. Changing it plays a sample. |
 

@@ -13,14 +13,18 @@ index 06127129..2de78f1f 100644
  /* (hookshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of hookshot_options.ini):
     the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position, SDL's order (the bottom face
 diff --git a/gpu/vk/vk_menu.cpp b/gpu/vk/vk_menu.cpp
-index 9b5a4799..28da648c 100644
+index 9b5a4799..de5cde22 100644
 --- a/gpu/vk/vk_menu.cpp
 +++ b/gpu/vk/vk_menu.cpp
-@@ -99,6 +99,22 @@ const char* tx_framegen(int v) {
+@@ -99,6 +99,26 @@ const char* tx_framegen(int v) {
      return t[v];
  }
  const char* tx_onoff(int v) { return v ? "On" : "Off"; }
 +// (Hookshot-Narrator) read-aloud's rows
++const char* tx_voice_color(int v) {
++    static const char* t[] = {"Rainbow", "Gold", "Green", "Blue", "Purple", "Pink"};
++    return t[v < 0 ? 0 : v > 5 ? 5 : v];
++}
 +const char* tx_glow_kind(int v) {
 +    static const char* t[] = {"Off", "Screen edge", "Arrow", "Both"};
 +    return t[v < 0 ? 0 : v > 3 ? 3 : v];
@@ -39,7 +43,7 @@ index 9b5a4799..28da648c 100644
  const char* tx_profile(int v) { return v ? "Handheld" : "Docked"; }   // (opts.handheld: the Profile row)
  const char* tx_menu_shortcut(int v) {
      // (F1 is never turned off: the menu is always one key away. Esc as well, as a PC game's pause menu)
-@@ -743,6 +759,25 @@ Row rows[] = {
+@@ -743,6 +763,29 @@ Row rows[] = {
       false, true},
      {TAB_AUDIO, "Audio output", &opts.audio_output, 0, 2, 1, tx_audio_output,
       "The speakers the game mixes its sound for. Applies after a restart.", hn_audio_output, true, true},
@@ -58,6 +62,10 @@ index 9b5a4799..28da648c 100644
 +     "it is time to press on. Arrow: a chevron points at a reply menu, so they know the game is asking them to choose. "
 +     "Both does each.", nullptr,
 +     false, true},
++    {TAB_AUDIO, "Glow colour", &opts.voice_color, 0, 5, 1, tx_voice_color,
++     "What colour those cues are. Rainbow keeps turning through every hue, as it always did; any other holds one colour "
++     "still, which is calmer to sit next to for a long session.", nullptr,
++     false, true},
 +    {TAB_AUDIO, "Link's voice", &opts.link_voice, 0, 15, 1, tx_link_voice,
 +     "The voice that reads Link's replies (the choices). Changing it plays a sample.", nullptr, false, true},
 +    {TAB_AUDIO, "Link's voice pitch", &opts.link_pitch, 0, 6, 1, tx_semitones,
@@ -65,7 +73,7 @@ index 9b5a4799..28da648c 100644
  
      // Gameplay
      {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff, "Frames per second in the top right corner.", hn_fps,
-@@ -3203,11 +3238,87 @@ void menu_tick() {
+@@ -3203,11 +3246,94 @@ void menu_tick() {
      }
  }
  
@@ -73,6 +81,13 @@ index 9b5a4799..28da648c 100644
 +// dialogue box's page, 0 when the page changes; a rainbow frame then pulses round the picture so a player who cannot read
 +// knows to go on
 +extern "C" __declspec(dllexport) volatile int mkwvk_voice_glow = 0;
++// (Hookshot-Narrator) The cue's colour. Rainbow keeps the hue turning, as it always did; a chosen colour holds one
++// hue still and lets the pulse and the breathing carry the movement, which is calmer on the eye at the screen's edge.
++static float voice_hue(float cycling) {
++    static const float fixed[] = {0.0f, 0.11f, 0.33f, 0.52f, 0.78f, 0.94f};   // gold, green, blue, purple, pink
++    const int c = opts.voice_color;
++    return (c <= 0 || c >= (int)(sizeof fixed / sizeof *fixed)) ? cycling : fixed[c];
++}
 +// (the choice glow: host/oot_voice.c's flag 0x100 | last choice << 4 | cursor right after Link read the choices. One rainbow
 +// chevron above the list pointing down at it, bobbing. Measured (lodge guard, 2 and 3 choices): the top row's centre at
 +// 0.760 - (M-2) * 0.068 of the picture's height, rows 0.058 tall, the list centred 0.887 across; the tip 0.012 above it)
@@ -92,8 +107,8 @@ index 9b5a4799..28da648c 100644
 +        const float g = 1.0f + k * 0.12f;
 +        const ImVec2 L(T.x - hw * g, T.y - ht * g), Rr(T.x + hw * g, T.y - ht * g), Tk(T.x, T.y + k * ph * 0.004f);
 +        float r1, g1, b1, r2, g2, b2;
-+        ImGui::ColorConvertHSVtoRGB((float)std::fmod(10.0 - t * 0.35, 1.0), 0.8f, 1.0f, r1, g1, b1);
-+        ImGui::ColorConvertHSVtoRGB((float)std::fmod(10.3 - t * 0.35, 1.0), 0.8f, 1.0f, r2, g2, b2);
++        ImGui::ColorConvertHSVtoRGB(voice_hue((float)std::fmod(10.0 - t * 0.35, 1.0)), 0.8f, 1.0f, r1, g1, b1);
++        ImGui::ColorConvertHSVtoRGB(voice_hue((float)std::fmod(10.3 - t * 0.35, 1.0)), 0.8f, 1.0f, r2, g2, b2);
 +        const float a = (k ? 0.16f : 0.9f) * pulse, th = k ? ph * 0.012f : std::max(2.5f, ph * 0.007f);
 +        dl->AddLine(L, Tk, ImGui::GetColorU32(ImVec4(r1, g1, b1, a)), th);
 +        dl->AddLine(Tk, Rr, ImGui::GetColorU32(ImVec4(r2, g2, b2, a)), th);
@@ -118,7 +133,7 @@ index 9b5a4799..28da648c 100644
 +    const int seg = 120;
 +    auto col = [&](float u, float a) {   // (u: 0..1 round the frame, clockwise from the top left)
 +        float r, g, b;
-+        ImGui::ColorConvertHSVtoRGB((float)std::fmod(u + 10.0 - t * 0.12, 1.0), 0.75f, 1.0f, r, g, b);
++        ImGui::ColorConvertHSVtoRGB(voice_hue((float)std::fmod(u + 10.0 - t * 0.12, 1.0)), 0.75f, 1.0f, r, g, b);
 +        return ImGui::GetColorU32(ImVec4(r, g, b, a));
 +    };
 +    const ImU32 clear = 0;
@@ -154,7 +169,7 @@ index 9b5a4799..28da648c 100644
          // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
          // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
          if (prebake_needed(w, h) && ui::begin(w, h)) {
-@@ -3232,6 +3343,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -3232,6 +3358,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
      if (start) draw_startup(c);   // (under the menu)
      if (open) draw_menu(c);
      if (fps) draw_fps(c, open);
@@ -162,7 +177,7 @@ index 9b5a4799..28da648c 100644
      ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
      ui::record(cmd, index, w, h);
  }
-@@ -3239,11 +3351,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -3239,11 +3366,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
  void menu_record_image(VkCommandBuffer cmd, VkImage image, VkImageView view, uint32_t w, uint32_t h) {
      const bool open = open_now.load(std::memory_order_relaxed);
      const bool fps = opts.show_fps && !startup_on.load(std::memory_order_acquire);
@@ -178,10 +193,10 @@ index 9b5a4799..28da648c 100644
      ui::record_to(cmd, image, view, w, h);
  }
 diff --git a/gpu/vk/vk_menu.h b/gpu/vk/vk_menu.h
-index d077bb8a..dc0028ba 100644
+index d077bb8a..7e3abc33 100644
 --- a/gpu/vk/vk_menu.h
 +++ b/gpu/vk/vk_menu.h
-@@ -50,6 +50,14 @@ struct Options {
+@@ -50,6 +50,16 @@ struct Options {
      int invert_cam_x = 0; // right-stick camera horizontal inversion: 0 normal, 1 inverted
      int invert_cam_y = 0; // right-stick camera vertical inversion: 0 normal, 1 inverted
      int rumble = 100;     // the controllers' rumble in percent of the game's: 0 Off, 25 to 150 (host/pad_sdl.c)
@@ -189,6 +204,8 @@ index d077bb8a..dc0028ba 100644
 +    int voice_kind = 0;           // 0 natural (Piper), 1 Windows' voice, 2 custom (piper/custom/*.onnx)
 +    int voice_speed = 100;        // percent of the voice's normal pace
 +    int voice_glow = 3;           // the rainbow cues: 0 off, 1 screen edge, 2 arrow (over reply menus), 3 both.
++    int voice_color = 0;          // (Hookshot-Narrator) the cues' colour: 0 Rainbow, then gold, green,
++                                  // blue, purple, pink
 +                                  // (Both by default: Arrow alone marks reply menus, so a page merely waiting to be
 +                                  //  turned would carry no cue at all, which is what a player who cannot read needs most)
 +    int link_voice = 0;           // which of the candidate voices reads Link's choices

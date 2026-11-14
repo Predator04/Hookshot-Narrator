@@ -1,7 +1,7 @@
 # Hookshot-Narrator
 
-**Read-aloud dialogue for [Hookshot](https://github.com/NotRexed/Hookshot)**: the PC version of *The Legend of Zelda:
-Ocarina of Time* (Nintendo Switch 2) that you build from your own copy of the game.
+**Read-aloud dialogue for [Hookshot](https://git.magicbean.dev/MagicBeanDev/Longshot)**: the PC version of *The Legend
+of Zelda: Ocarina of Time* (Nintendo Switch 2) that you build from your own copy of the game.
 
 Hookshot-Narrator is an add-on. It reads every dialogue box out loud with a natural voice, gives each character a
 voice that fits them, and reads Link's reply choices in his own voice. It's made for players who can't read yet, and
@@ -12,6 +12,13 @@ for anyone who'd rather listen.
 > [!IMPORTANT]
 > This repository has **no game files, no keys, no executable and no voice recordings**. You need Hookshot built from
 > your own copy of the game. The voices are generated live on your PC.
+
+> [!NOTE]
+> **Hookshot's GitHub repository is gone.** The project continues as
+> [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot), by Team MagicBean, on their own Forgejo server. It is
+> the same repository under a new name, and it still carries Hookshot's own tags — so **Hookshot v2.1.0, which this
+> add-on needs, is still available there** as the tag `v2.1.0`. The install steps below point at it. Nothing about
+> this add-on has changed; only where you get the source.
 
 ## Features
 
@@ -55,17 +62,21 @@ Hookshot-Narrator works on **Windows** with **Hookshot v2.1.0** built from sourc
 
 ### 1. What you need
 
-- Everything Hookshot's own [Build from source](https://github.com/NotRexed/Hookshot#build-from-source) needs
+- Everything Hookshot's own
+  [Build from source](https://git.magicbean.dev/MagicBeanDev/Longshot/src/tag/v2.1.0/README.md#build-from-source) needs
   (Python 3, llvm-mingw and the builder's tools), and your own copy of the game.
 - [Git for Windows](https://git-scm.com).
 
 ### 2. Get Hookshot v2.1.0 and add Hookshot-Narrator
 
 ```powershell
-git clone https://github.com/NotRexed/Hookshot
-cd Hookshot
+git clone https://git.magicbean.dev/MagicBeanDev/Longshot
+cd Longshot
 git checkout v2.1.0
 ```
+
+The folder is called `Longshot` because that is the project's name now, but the `v2.1.0` tag is Hookshot v2.1.0 —
+the same commit Hookshot released — so it builds `hookshot.exe`, and everything below refers to Hookshot.
 
 Download this repository (**Code → Download ZIP**, then unzip it, or `git clone` it). Open PowerShell in its folder
 and run:
@@ -79,8 +90,9 @@ Hookshot-Narrator is already installed, or if your Hookshot version doesn't matc
 
 ### 3. Build Hookshot
 
-Build it the way Hookshot's [Build from source](https://github.com/NotRexed/Hookshot#build-from-source) section
-describes, for example:
+Build it the way Hookshot's
+[Build from source](https://git.magicbean.dev/MagicBeanDev/Longshot/src/tag/v2.1.0/README.md#build-from-source)
+section describes, for example:
 
 ```powershell
 python -I nx2/make_game.py --nup "C:\path\your-game.nup" --out "C:\Games\Hookshot" --language en-US
@@ -108,9 +120,11 @@ Read-aloud works without this step by using the Windows voice. For the natural v
 Start the game and talk to anyone. The settings are under **Insert → Audio**.
 
 > [!NOTE]
-> The Hookshot Builder's **Update** button builds stock Hookshot again, which removes Hookshot-Narrator. To update,
-> check out the new Hookshot version and run `install.ps1` again (when Hookshot-Narrator supports that version), then
-> build.
+> The Hookshot Builder's **Update** button builds stock Hookshot again, which removes Hookshot-Narrator. Re-run
+> `install.ps1` and build again to put it back.
+>
+> Hookshot itself is no longer updated — Longshot carries it on, and its versions are not v2.1.0, so this add-on's
+> patch does not fit them yet. Stay on the `v2.1.0` tag until a release here says otherwise.
 
 ## Using other voices, or your own
 
@@ -138,8 +152,8 @@ Then build Hookshot again. You can delete the `piper` folder next to `hookshot.e
   starting with `voice` to `hookshot_log.txt` next to `hookshot.exe`, including lines that couldn't be read and why.
 - **The Windows voice instead of the natural one:** the log says `no piper\piper.exe beside the game` or
   `no piper\<voice file>`. Check step 4.
-- **`install.ps1` says the patch doesn't fit:** your Hookshot isn't v2.1.0. Run `git checkout v2.1.0` in the Hookshot
-  folder.
+- **`install.ps1` says the patch doesn't fit:** your source isn't v2.1.0. Run `git checkout v2.1.0` in the folder you
+  cloned in step 2 (`Longshot`). A newer Longshot version will not fit this patch.
 
 ## How it works
 
@@ -151,7 +165,8 @@ slow down. When the game opens one of its own voiced lines, the add-on stays qui
 
 ## Credits and license
 
-- [Hookshot](https://github.com/NotRexed/Hookshot) and its contributors. This add-on builds on their work.
+- Hookshot and its contributors, and [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) (Team MagicBean),
+  who continue that work. This add-on builds on theirs.
 - [Piper](https://github.com/rhasspy/piper) for the natural voices, and the authors of the voice models.
 
 Hookshot-Narrator is licensed under the GPL-3.0, the same as Hookshot. See [LICENSE](LICENSE). It isn't affiliated

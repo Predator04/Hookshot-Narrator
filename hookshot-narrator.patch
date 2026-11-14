@@ -13,7 +13,7 @@ index 06127129..2de78f1f 100644
  /* (hookshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of hookshot_options.ini):
     the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position, SDL's order (the bottom face
 diff --git a/gpu/vk/vk_menu.cpp b/gpu/vk/vk_menu.cpp
-index 9b5a4799..882766d9 100644
+index 9b5a4799..28da648c 100644
 --- a/gpu/vk/vk_menu.cpp
 +++ b/gpu/vk/vk_menu.cpp
 @@ -99,6 +99,22 @@ const char* tx_framegen(int v) {
@@ -39,7 +39,7 @@ index 9b5a4799..882766d9 100644
  const char* tx_profile(int v) { return v ? "Handheld" : "Docked"; }   // (opts.handheld: the Profile row)
  const char* tx_menu_shortcut(int v) {
      // (F1 is never turned off: the menu is always one key away. Esc as well, as a PC game's pause menu)
-@@ -743,6 +759,24 @@ Row rows[] = {
+@@ -743,6 +759,25 @@ Row rows[] = {
       false, true},
      {TAB_AUDIO, "Audio output", &opts.audio_output, 0, 2, 1, tx_audio_output,
       "The speakers the game mixes its sound for. Applies after a restart.", hn_audio_output, true, true},
@@ -54,8 +54,9 @@ index 9b5a4799..882766d9 100644
 +    {TAB_AUDIO, "Read-aloud speed", &opts.voice_speed, 50, 200, 10, tx_percent,
 +     "How fast lines are read. 100% is the voice's normal pace.", nullptr, false, true},
 +    {TAB_AUDIO, "Press-next glow", &opts.voice_glow, 0, 3, 1, tx_glow_kind,
-+     "Once a page has been read, a rainbow glow shows it is time to press for the next one: round the screen's edge, on "
-+     "the box's next arrow, or both.", nullptr,
++     "Rainbow cues for a player who cannot read. Screen edge: the picture's rim glows once a page has been read, to show "
++     "it is time to press on. Arrow: a chevron points at a reply menu, so they know the game is asking them to choose. "
++     "Both does each.", nullptr,
 +     false, true},
 +    {TAB_AUDIO, "Link's voice", &opts.link_voice, 0, 15, 1, tx_link_voice,
 +     "The voice that reads Link's replies (the choices). Changing it plays a sample.", nullptr, false, true},
@@ -64,7 +65,7 @@ index 9b5a4799..882766d9 100644
  
      // Gameplay
      {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff, "Frames per second in the top right corner.", hn_fps,
-@@ -3203,11 +3237,127 @@ void menu_tick() {
+@@ -3203,11 +3238,87 @@ void menu_tick() {
      }
  }
  
@@ -72,46 +73,6 @@ index 9b5a4799..882766d9 100644
 +// dialogue box's page, 0 when the page changes; a rainbow frame then pulses round the picture so a player who cannot read
 +// knows to go on
 +extern "C" __declspec(dllexport) volatile int mkwvk_voice_glow = 0;
-+// (the "press next" arrow's halo: the game's own arrow, centred at the dialogue box's bottom edge, at 50% across and 93.3%
-+// down the 16:9 game picture; the picture fitted in the window as the game's is, bars round it. A soft pulsing halo of
-+// rainbow light, its colours turning round it)
-+static void draw_halo(ImVec2 c, float R0, float ph) {
-+    ImDrawList* dl = ImGui::GetForegroundDrawList();
-+    const double t = prof_now() / 1e9;
-+    const float pulse = 0.75f + 0.25f * (float)std::sin(t * 3.0);
-+    const float R = R0 * (0.9f + 0.1f * pulse);
-+    const int seg = 48;
-+    for (int ring = 6; ring >= 1; ring--) {   // (soft haze: rings fading outward, each a wheel of colours)
-+        const float r0 = R * (0.35f + 0.18f * (ring - 1)), r1 = R * (0.35f + 0.18f * ring);
-+        const float a = 0.16f * pulse * (1.0f - (ring - 1) / 6.0f);
-+        for (int i = 0; i < seg; i++) {
-+            const float a0 = 6.2831853f * i / seg, a1 = 6.2831853f * (i + 1) / seg;
-+            float r, g, b;
-+            ImGui::ColorConvertHSVtoRGB((float)std::fmod((float)i / seg + 10.0 - t * 0.35, 1.0), 0.8f, 1.0f, r, g, b);
-+            const ImU32 in = ImGui::GetColorU32(ImVec4(r, g, b, a)), out = ImGui::GetColorU32(ImVec4(r, g, b, a * 0.4f));
-+            const ImVec2 p0(c.x + std::cos(a0) * r0, c.y + std::sin(a0) * r0), p1(c.x + std::cos(a1) * r0, c.y + std::sin(a1) * r0);
-+            const ImVec2 q0(c.x + std::cos(a0) * r1, c.y + std::sin(a0) * r1), q1(c.x + std::cos(a1) * r1, c.y + std::sin(a1) * r1);
-+            dl->PrimReserve(6, 4);
-+            const ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
-+            const ImDrawIdx base = (ImDrawIdx)dl->_VtxCurrentIdx;
-+            dl->PrimWriteVtx(p0, uv, in), dl->PrimWriteVtx(p1, uv, in), dl->PrimWriteVtx(q1, uv, out), dl->PrimWriteVtx(q0, uv, out);
-+            dl->PrimWriteIdx(base), dl->PrimWriteIdx((ImDrawIdx)(base + 1)), dl->PrimWriteIdx((ImDrawIdx)(base + 2));
-+            dl->PrimWriteIdx(base), dl->PrimWriteIdx((ImDrawIdx)(base + 2)), dl->PrimWriteIdx((ImDrawIdx)(base + 3));
-+        }
-+    }
-+    for (int i = 0; i < seg; i++) {   // (a bright thin ring)
-+        const float a0 = 6.2831853f * i / seg, a1 = 6.2831853f * (i + 1) / seg;
-+        float r, g, b;
-+        ImGui::ColorConvertHSVtoRGB((float)std::fmod((float)i / seg + 10.0 - t * 0.35, 1.0), 0.75f, 1.0f, r, g, b);
-+        dl->AddLine(ImVec2(c.x + std::cos(a0) * R, c.y + std::sin(a0) * R), ImVec2(c.x + std::cos(a1) * R, c.y + std::sin(a1) * R),
-+                    ImGui::GetColorU32(ImVec4(r, g, b, 0.75f * pulse)), std::max(1.5f, ph * 0.0035f));
-+    }
-+}
-+static void draw_voice_arrow(uint32_t w, uint32_t h) {
-+    const float W = (float)w, H = (float)h;
-+    const float pw = std::min(W, H * 16.0f / 9.0f), ph = pw * 9.0f / 16.0f;
-+    draw_halo(ImVec2(W * 0.5f, (H - ph) * 0.5f + ph * 0.933f), ph * 0.034f, ph);   // (the game's arrow: y 0.920..0.948)
-+}
 +// (the choice glow: host/oot_voice.c's flag 0x100 | last choice << 4 | cursor right after Link read the choices. One rainbow
 +// chevron above the list pointing down at it, bobbing. Measured (lodge guard, 2 and 3 choices): the top row's centre at
 +// 0.760 - (M-2) * 0.068 of the picture's height, rows 0.058 tall, the list centred 0.887 across; the tip 0.012 above it)
@@ -143,10 +104,10 @@ index 9b5a4799..882766d9 100644
 +}
 +static void draw_voice_glow(uint32_t w, uint32_t h) {
 +    const int v = mkwvk_voice_glow;
-+    if (v >= 0x100) {
-+        if (opts.voice_glow == 2 || opts.voice_glow == 3) draw_choice_glow(w, h, v);
-+        if (opts.voice_glow == 2) return;
-+    } else if (opts.voice_glow == 2 || opts.voice_glow == 3) draw_voice_arrow(w, h);   // (Arrow, Both)
++    // (Arrow and Both put the chevron over a reply menu. A page that is only waiting to be turned gets no mark of its own:
++    // the game draws its own arrow there, and the halo we used to ring it with sat over the text. The edge glow still says
++    // "press on", under Screen edge and Both)
++    if (v >= 0x100 && (opts.voice_glow == 2 || opts.voice_glow == 3)) draw_choice_glow(w, h, v);
 +    if (opts.voice_glow == 2) return;
 +    // (a soft edge glow: each edge a gradient from the rim, fading to nothing inward, its colour flowing round the frame;
 +    // breathes slowly)
@@ -193,7 +154,7 @@ index 9b5a4799..882766d9 100644
          // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
          // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
          if (prebake_needed(w, h) && ui::begin(w, h)) {
-@@ -3232,6 +3382,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -3232,6 +3343,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
      if (start) draw_startup(c);   // (under the menu)
      if (open) draw_menu(c);
      if (fps) draw_fps(c, open);
@@ -201,7 +162,7 @@ index 9b5a4799..882766d9 100644
      ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
      ui::record(cmd, index, w, h);
  }
-@@ -3239,11 +3390,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -3239,11 +3351,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
  void menu_record_image(VkCommandBuffer cmd, VkImage image, VkImageView view, uint32_t w, uint32_t h) {
      const bool open = open_now.load(std::memory_order_relaxed);
      const bool fps = opts.show_fps && !startup_on.load(std::memory_order_acquire);
@@ -217,17 +178,19 @@ index 9b5a4799..882766d9 100644
      ui::record_to(cmd, image, view, w, h);
  }
 diff --git a/gpu/vk/vk_menu.h b/gpu/vk/vk_menu.h
-index d077bb8a..2c63119e 100644
+index d077bb8a..dc0028ba 100644
 --- a/gpu/vk/vk_menu.h
 +++ b/gpu/vk/vk_menu.h
-@@ -50,6 +50,12 @@ struct Options {
+@@ -50,6 +50,14 @@ struct Options {
      int invert_cam_x = 0; // right-stick camera horizontal inversion: 0 normal, 1 inverted
      int invert_cam_y = 0; // right-stick camera vertical inversion: 0 normal, 1 inverted
      int rumble = 100;     // the controllers' rumble in percent of the game's: 0 Off, 25 to 150 (host/pad_sdl.c)
 +    int voice_on = 1;             // (Hookshot-Narrator, host/oot_voice.c) read-aloud of dialogue boxes
 +    int voice_kind = 0;           // 0 natural (Piper), 1 Windows' voice, 2 custom (piper/custom/*.onnx)
 +    int voice_speed = 100;        // percent of the voice's normal pace
-+    int voice_glow = 2;           // the rainbow "press next" glow: 0 off, 1 screen edge, 2 arrow, 3 both
++    int voice_glow = 3;           // the rainbow cues: 0 off, 1 screen edge, 2 arrow (over reply menus), 3 both.
++                                  // (Both by default: Arrow alone marks reply menus, so a page merely waiting to be
++                                  //  turned would carry no cue at all, which is what a player who cannot read needs most)
 +    int link_voice = 0;           // which of the candidate voices reads Link's choices
 +    int link_pitch = 3;           // semitones Link's voice is raised
      int stick_dead_zone = 0;  // a stick axis below it is 0: 0 XInput's 7849 (~24%), 1..5 5% to 30% (host/nn_hid.c)
@@ -303,10 +266,10 @@ index c747cbdb..f900b92b 100644
         stepped, so that one's text is gone) */
 diff --git a/host/oot_voice.c b/host/oot_voice.c
 new file mode 100644
-index 00000000..53211354
+index 00000000..1487d59d
 --- /dev/null
 +++ b/host/oot_voice.c
-@@ -0,0 +1,969 @@
+@@ -0,0 +1,971 @@
 +/* (local) Read-aloud: the lines characters say in their dialogue box, spoken with Windows' own voice (SAPI), for a player
 +   who cannot read yet.
 +
@@ -1213,7 +1176,9 @@ index 00000000..53211354
 +            /* the choice glow: once the list has been read, the highlighted choice glows (the renderer's flag 0x100 | last
 +               choice << 4 | cursor) until the menu goes; no page glow while a menu is up */
 +            if (sig) {
-+                if (list_said && !speaking && !pending_at && !choice_glow_on) choice_glow_on = 1, list_said = 0, hos_log("voice: choice arrow armed (%u choices)", choice_last + 1);   /* (armed once) */
++                /* (armed once, as Link STARTS reading the options, not after he has finished: list_said is set the moment
++                   speak() is called, so waiting for !speaking here held the chevron back for a whole utterance) */
++                if (list_said && !pending_at && !choice_glow_on) choice_glow_on = 1, list_said = 0, hos_log("voice: choice arrow armed (%u choices)", choice_last + 1);   /* (armed once) */
 +                if (choice_glow_on && rx_option(OPT_VOICE_GLOW, 1)) {
 +                    const int val = 0x100 | (int)choice_last << 4 | cursor;
 +                    if (!glow_flag || *glow_flag != val) {

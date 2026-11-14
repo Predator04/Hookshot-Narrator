@@ -190,7 +190,7 @@ changes.
 
 ```mermaid
 flowchart TD
-    A["game code<br/>(recompiled, unmodified)"] -->|writes| B["message object<br/>in game memory"]
+    A["game code — recompiled, unmodified"] -->|writes| B["message object<br/>in game memory"]
     B -->|polled| C["oot_voice.c<br/>background thread"]
     C --> D["text · speaker · page counter · choices"]
     D --> E["Piper<br/>child process"]

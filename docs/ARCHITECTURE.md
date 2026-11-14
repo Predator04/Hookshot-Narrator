@@ -58,7 +58,7 @@ Nearly all the work is in `oot_voice.c`. The rest are a few lines each.
 
 ```mermaid
 flowchart TD
-    A["game thread<br/>(recompiled game code)"] -->|writes| B["message object<br/>in game memory"]
+    A["game thread — recompiled game code"] -->|writes| B["message object<br/>in game memory"]
     B -->|read| C["oot_voice.c<br/>background thread"]
     C --> D{"changed?"}
     D -->|no| C

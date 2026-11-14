@@ -102,10 +102,22 @@ python -I nx2/make_game.py --nup "C:\path\your-game.nup" --out "C:\Games\Hooksho
 
 ### 4. Add the natural voices
 
-Read-aloud works without this step by using the Windows voice. For the natural voices:
+Read-aloud works without this step by using the Windows voice. For the natural voices, point this at your **built
+game folder** — the one you passed to `--out`, holding `hookshot.exe`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-voices.ps1 -Game "C:\Games\Hookshot"
+```
+
+It fetches Piper and both voices (about 157 MB) and puts them where the add-on looks. Anything already there and
+the right size is left alone, so it's safe to run again if a download drops. Add `-Check` to see what's missing
+without downloading anything.
+
+<details>
+<summary>Or do it by hand</summary>
 
 1. Download `piper_windows_amd64.zip` from [Piper's releases](https://github.com/rhasspy/piper/releases) (release
-   2023.11.14-2). Unzip it into a folder named **`piper`** next to `hookshot.exe`, so that you have
+   2023.11.14-2). It contains a `piper` folder; unzip it next to `hookshot.exe`, so that you have
    `C:\Games\Hookshot\piper\piper.exe`.
 2. Download these two voices from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US),
    both the `.onnx` file and its `.onnx.json` file, into the same `piper` folder:
@@ -115,7 +127,9 @@ Read-aloud works without this step by using the Windows voice. For the natural v
    | `en_US-lessac-medium.onnx` + `.onnx.json` | the narrator (characters it doesn't know) | about 63 MB |
    | `en_US-libritts_r-medium.onnx` + `.onnx.json` | the character voices and Link's voice | about 79 MB |
 
-   Check each voice's licence on its model card before you use it.
+</details>
+
+Either way, check each voice's licence on its model card before you use it.
 
 ### 5. Play
 

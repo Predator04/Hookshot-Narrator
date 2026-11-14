@@ -65,7 +65,7 @@ flowchart TD
     D -->|yes| E["extract text, speaker,<br/>page, choice count"]
     E --> F["Piper child process"]
     F -->|PCM| G["game audio output"]
-    E --> H["mkwvk_voice_glow<br/>(one exported int)"]
+    E --> H["mkwvk_voice_glow<br/>one exported int"]
     H --> I["Vulkan layer:<br/>edge glow / chevron"]
 ```
 

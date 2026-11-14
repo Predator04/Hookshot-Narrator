@@ -1,26 +1,27 @@
 diff --git a/gpu/vk/vk_api.h b/gpu/vk/vk_api.h
-index 06127129..2de78f1f 100644
+index 19d8f6ef..8098e5b2 100644
 --- a/gpu/vk/vk_api.h
 +++ b/gpu/vk/vk_api.h
-@@ -35,6 +35,9 @@ enum { HOS_OPT_HDR_NATIVE = 40, HOS_OPT_HDR_PEAK, HOS_OPT_HDR_WHITE, HOS_OPT_DIS
- /* (HOS_OPT_DISABLE_CAMERA_CENTERING, 45: Controls' movement-follow yaw, host/mouse_native.c: 0 stock, 1 disabled;
-    44 is reserved for HOS_OPT_SKIP_TITLE) */
- enum { HOS_OPT_DISABLE_CAMERA_CENTERING = 45 };
-+/* (Hookshot-Narrator) read-aloud, host/oot_voice.c: on 0/1; voice 0 natural (Piper) 1 Windows 2 custom; speed in percent;
-+   glow 0 off 1 screen edge 2 arrow 3 both; Link's voice 0..15; Link's pitch in semitones */
+@@ -54,6 +54,10 @@ enum { HOS_OPT_SKIP_OPENING = 52 };
+ /* (HOS_OPT_FPS_CAP, 53: the Game frame rate cap row, host/nn_vi.c fps_refresh reads it at each present: 0 the console's 60, then
+    90, 120, 144, 165, 240, 6 Uncapped; a change applies in play) */
+ enum { HOS_OPT_FPS_CAP = 53 };
++/* (Longshot-Narrator) read-aloud, host/oot_voice.c: on 0/1; voice 0 natural (Piper) 1 Windows 2 custom; speed in percent;
++   glow 0 off 1 screen edge 2 arrow 3 both; Link's voice 0..15; Link's pitch in semitones.
++   70 to 75: clear of Longshot's own ids, which reach 53 (FPS cap), with 44, 49, 50 and 60 reserved. */
 +enum { HOS_OPT_VOICE_ON = 70, HOS_OPT_VOICE_KIND, HOS_OPT_VOICE_SPEED, HOS_OPT_VOICE_GLOW, HOS_OPT_LINK_VOICE, HOS_OPT_LINK_PITCH };
  
- /* (hookshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of hookshot_options.ini):
-    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position, SDL's order (the bottom face
+ /* (longshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of longshot_options.ini):
+    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position (the bottom face button first:
 diff --git a/gpu/vk/vk_menu.cpp b/gpu/vk/vk_menu.cpp
-index 9b5a4799..de5cde22 100644
+index f3bdb417..b1b74ad1 100644
 --- a/gpu/vk/vk_menu.cpp
 +++ b/gpu/vk/vk_menu.cpp
-@@ -99,6 +99,26 @@ const char* tx_framegen(int v) {
-     return t[v];
- }
+@@ -125,6 +125,26 @@ const char* tx_framegen(int v) {
  const char* tx_onoff(int v) { return v ? "On" : "Off"; }
-+// (Hookshot-Narrator) read-aloud's rows
+ const char* tx_fps_level(int v) { return fps_stats::level_name(v); }
+ const char* tx_fps_corner(int v) { return fps_stats::corner_name(v); }   // (the FPS counter row: Off, FPS, Frame time, Graph, Breakdown)
++// (Longshot-Narrator) read-aloud's rows
 +const char* tx_voice_color(int v) {
 +    static const char* t[] = {"Rainbow", "Gold", "Green", "Blue", "Purple", "Pink"};
 +    return t[v < 0 ? 0 : v > 5 ? 5 : v];
@@ -43,24 +44,24 @@ index 9b5a4799..de5cde22 100644
  const char* tx_profile(int v) { return v ? "Handheld" : "Docked"; }   // (opts.handheld: the Profile row)
  const char* tx_menu_shortcut(int v) {
      // (F1 is never turned off: the menu is always one key away. Esc as well, as a PC game's pause menu)
-@@ -743,6 +763,29 @@ Row rows[] = {
+@@ -1242,6 +1262,29 @@ Row rows[] = {
       false, true},
      {TAB_AUDIO, "Audio output", &opts.audio_output, 0, 2, 1, tx_audio_output,
       "The speakers the game mixes its sound for. Applies after a restart.", hn_audio_output, true, true},
-+    // (Hookshot-Narrator) read-aloud, host/oot_voice.c
++    // (Longshot-Narrator) read-aloud, host/oot_voice.c
 +    {TAB_AUDIO, "Read aloud", &opts.voice_on, 0, 1, 1, tx_onoff,
 +     "Characters' lines in dialogue boxes are spoken aloud, for players who cannot read yet. Lines the game voices itself "
 +     "are left to the game.", nullptr, false, true},
 +    {TAB_AUDIO, "Read-aloud voice", &opts.voice_kind, 0, 2, 1, tx_voice_kind,
 +     "Natural: a lifelike voice that runs on this PC (Piper). Windows: the voice built into Windows. Custom: your own Piper "
-+     "voice for every line; put its .onnx and .onnx.json in the piper\custom folder next to hookshot.exe.",
++     "voice for every line; put its .onnx and .onnx.json in the piper\\custom folder next to longshot.exe.",
 +     nullptr, false, true},
 +    {TAB_AUDIO, "Read-aloud speed", &opts.voice_speed, 50, 200, 10, tx_percent,
 +     "How fast lines are read. 100% is the voice's normal pace.", nullptr, false, true},
 +    {TAB_AUDIO, "Press-next glow", &opts.voice_glow, 0, 3, 1, tx_glow_kind,
-+     "Rainbow cues for a player who cannot read. Screen edge: the picture's rim glows once a page has been read, to show "
-+     "it is time to press on. Arrow: a chevron points at a reply menu, so they know the game is asking them to choose. "
-+     "Both does each.", nullptr,
++     "Rainbow cues for a player who cannot read. Screen edge: the picture's rim glows once a page has been read, to "
++     "show it is time to press on. Arrow: a chevron points at a reply menu, so they know the game is asking them to "
++     "choose. Both does each.", nullptr,
 +     false, true},
 +    {TAB_AUDIO, "Glow colour", &opts.voice_color, 0, 5, 1, tx_voice_color,
 +     "What colour those cues are. Rainbow keeps turning through every hue, as it always did; any other holds one colour "
@@ -72,17 +73,17 @@ index 9b5a4799..de5cde22 100644
 +     "How much higher Link's voice is, in semitones, to sound younger. Changing it plays a sample.", nullptr, false, true},
  
      // Gameplay
-     {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff, "Frames per second in the top right corner.", hn_fps,
-@@ -3203,11 +3246,94 @@ void menu_tick() {
+     {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, fps_stats::kLevels - 1, 1, tx_fps_level,
+@@ -5147,11 +5190,94 @@ void menu_tick() {
      }
  }
  
-+// (Hookshot-Narrator) Read-aloud's "press next" glow: host/oot_voice.c sets this to 1 when the voice has finished the
++// (Longshot-Narrator) Read-aloud's "press next" glow: host/oot_voice.c sets this to 1 when the voice has finished the
 +// dialogue box's page, 0 when the page changes; a rainbow frame then pulses round the picture so a player who cannot read
 +// knows to go on
 +extern "C" __declspec(dllexport) volatile int mkwvk_voice_glow = 0;
-+// (Hookshot-Narrator) The cue's colour. Rainbow keeps the hue turning, as it always did; a chosen colour holds one
-+// hue still and lets the pulse and the breathing carry the movement, which is calmer on the eye at the screen's edge.
++// (Longshot-Narrator) The cue's colour. Rainbow keeps the hue turning, as it always did; a chosen colour holds
++// one hue still and lets the pulse and the breathing carry the movement, which is calmer at the screen's edge.
 +static float voice_hue(float cycling) {
 +    static const float fixed[] = {0.0f, 0.11f, 0.33f, 0.52f, 0.78f, 0.94f};   // gold, green, blue, purple, pink
 +    const int c = opts.voice_color;
@@ -119,9 +120,9 @@ index 9b5a4799..de5cde22 100644
 +}
 +static void draw_voice_glow(uint32_t w, uint32_t h) {
 +    const int v = mkwvk_voice_glow;
-+    // (Arrow and Both put the chevron over a reply menu. A page that is only waiting to be turned gets no mark of its own:
-+    // the game draws its own arrow there, and the halo we used to ring it with sat over the text. The edge glow still says
-+    // "press on", under Screen edge and Both)
++    // (Arrow and Both put the chevron over a reply menu. A page that is only waiting to be turned gets no mark of
++    // its own: the game draws its own arrow there, and the halo we used to ring it with sat over the text. The
++    // edge glow still says "press on", under Screen edge and Both)
 +    if (v >= 0x100 && (opts.voice_glow == 2 || opts.voice_glow == 3)) draw_choice_glow(w, h, v);
 +    if (opts.voice_glow == 2) return;
 +    // (a soft edge glow: each edge a gradient from the rim, fading to nothing inward, its colour flowing round the frame;
@@ -169,7 +170,7 @@ index 9b5a4799..de5cde22 100644
          // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
          // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
          if (prebake_needed(w, h) && ui::begin(w, h)) {
-@@ -3232,6 +3358,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -5176,6 +5302,7 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
      if (start) draw_startup(c);   // (under the menu)
      if (open) draw_menu(c);
      if (fps) draw_fps(c, open);
@@ -177,7 +178,7 @@ index 9b5a4799..de5cde22 100644
      ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
      ui::record(cmd, index, w, h);
  }
-@@ -3239,11 +3366,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
+@@ -5183,11 +5310,13 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h) {
  void menu_record_image(VkCommandBuffer cmd, VkImage image, VkImageView view, uint32_t w, uint32_t h) {
      const bool open = open_now.load(std::memory_order_relaxed);
      const bool fps = opts.show_fps && !startup_on.load(std::memory_order_acquire);
@@ -193,52 +194,49 @@ index 9b5a4799..de5cde22 100644
      ui::record_to(cmd, image, view, w, h);
  }
 diff --git a/gpu/vk/vk_menu.h b/gpu/vk/vk_menu.h
-index d077bb8a..7e3abc33 100644
+index 16e82309..c7dda537 100644
 --- a/gpu/vk/vk_menu.h
 +++ b/gpu/vk/vk_menu.h
-@@ -50,6 +50,16 @@ struct Options {
+@@ -67,6 +67,13 @@ struct Options {
      int invert_cam_x = 0; // right-stick camera horizontal inversion: 0 normal, 1 inverted
      int invert_cam_y = 0; // right-stick camera vertical inversion: 0 normal, 1 inverted
      int rumble = 100;     // the controllers' rumble in percent of the game's: 0 Off, 25 to 150 (host/pad_sdl.c)
-+    int voice_on = 1;             // (Hookshot-Narrator, host/oot_voice.c) read-aloud of dialogue boxes
++    int voice_on = 1;             // (Longshot-Narrator, host/oot_voice.c) read-aloud of dialogue boxes
 +    int voice_kind = 0;           // 0 natural (Piper), 1 Windows' voice, 2 custom (piper/custom/*.onnx)
 +    int voice_speed = 100;        // percent of the voice's normal pace
-+    int voice_glow = 3;           // the rainbow cues: 0 off, 1 screen edge, 2 arrow (over reply menus), 3 both.
-+    int voice_color = 0;          // (Hookshot-Narrator) the cues' colour: 0 Rainbow, then gold, green,
-+                                  // blue, purple, pink
-+                                  // (Both by default: Arrow alone marks reply menus, so a page merely waiting to be
-+                                  //  turned would carry no cue at all, which is what a player who cannot read needs most)
++    int voice_glow = 3;           // the cues: 0 off, 1 screen edge, 2 arrow (reply menus), 3 both
++    int voice_color = 0;          // their colour: 0 Rainbow, then gold, green, blue, purple, pink
 +    int link_voice = 0;           // which of the candidate voices reads Link's choices
 +    int link_pitch = 3;           // semitones Link's voice is raised
-     int stick_dead_zone = 0;  // a stick axis below it is 0: 0 XInput's 7849 (~24%), 1..5 5% to 30% (host/nn_hid.c)
+     int stick_dead_zone = 0;  // circular stick cutoff: 0 XInput's 7849 (~24%), 1..5 5% to 30% (host/nn_hid.c)
      int pad_layout = 0;   // 0 Nintendo (default), 1 Xbox / PC, 2 Swap Face Buttons, 3 Custom
      int gyro = 1;         // motion controls from a pad's gyroscope (host/pad_sdl.c, host/hos_motion.h); on by default
 diff --git a/gpu/vk/vk_replay.cpp b/gpu/vk/vk_replay.cpp
-index 7b2934f6..81bb08af 100644
+index e444d4ec..f99ce7c8 100644
 --- a/gpu/vk/vk_replay.cpp
 +++ b/gpu/vk/vk_replay.cpp
-@@ -4280,6 +4280,12 @@ void fill_replay_table(MkwVkRenderer& t) {
+@@ -5052,6 +5052,12 @@ void fill_replay_table(MkwVkRenderer& t) {
          if (id == HOS_OPT_VOLUME) return opts.volume;
          if (id == HOS_OPT_MUTE_BACKGROUND) return opts.mute_background;
          if (id == HOS_OPT_DISABLE_CAMERA_CENTERING) return opts.disable_camera_centering;
-+        if (id == HOS_OPT_VOICE_ON) return opts.voice_on;   // (Hookshot-Narrator: read-aloud, host/oot_voice.c)
++        if (id == HOS_OPT_VOICE_ON) return opts.voice_on;   // (Longshot-Narrator: read-aloud, host/oot_voice.c)
 +        if (id == HOS_OPT_VOICE_KIND) return opts.voice_kind;
 +        if (id == HOS_OPT_VOICE_SPEED) return opts.voice_speed;
 +        if (id == HOS_OPT_VOICE_GLOW) return opts.voice_glow;
 +        if (id == HOS_OPT_LINK_VOICE) return opts.link_voice;
 +        if (id == HOS_OPT_LINK_PITCH) return opts.link_pitch;
          if (id == HOS_OPT_TEXT_SIZE) return opts.text_size;
-         return id == 0 ? opts.realtime : id == 1 ? menu_is_open() : id == 2 ? resolution_auto() && !temporal_full_scale() : id == 3 ? (temporal_full_scale() ? 10000 : resolution_scale()) : id == 4 ? opts.pad_background : id == 5 ? opts.text_speed : id == 6 ? opts.mouse_native :
-                id == 7 ? opts.mouse_sens : id == 8 ? opts.mouse_invert : id == 9 ? opts.rumble : id == 16 ? opts.invert_cam_x : id == 17 ? opts.invert_cam_y : id == HOS_OPT_GYRO ? opts.gyro : id == HOS_OPT_GYRO_SENS_X ? opts.gyro_sens_x : id == HOS_OPT_GYRO_SENS_Y ? opts.gyro_sens_y : id == HOS_OPT_GYRO_INV_X ? opts.gyro_inv_x : id == HOS_OPT_GYRO_INV_Y ? opts.gyro_inv_y : id == HOS_OPT_GYRO_DEADZONE ? opts.gyro_deadzone :
+         if (id == HOS_OPT_CAMERA_SPEED) return opts.camera_speed;
+         if (id == HOS_OPT_PROMPTS) return opts.prompts;
 diff --git a/host/hos_main.c b/host/hos_main.c
-index 39b0ff92..f49f0073 100644
+index a78c1905..8996df22 100644
 --- a/host/hos_main.c
 +++ b/host/hos_main.c
-@@ -1160,6 +1160,10 @@ void hos_oot_lift_player(Ctx *c, uint64_t actor) {
+@@ -1554,6 +1554,10 @@ void hos_oot_lift_player(Ctx *c, uint64_t actor) {
      static SRWLOCK cheats_lock = SRWLOCK_INIT;
      if (!TryAcquireSRWLockExclusive(&cheats_lock)) return;
      oot_update_player_cheats(c, actor, components);
-+    {   /* (Hookshot-Narrator: read-aloud fills in a message's numbers from GameDataMgr, host/oot_voice.c) */
++    {   /* (Longshot-Narrator: read-aloud fills in a message's numbers from GameDataMgr, host/oot_voice.c) */
 +        extern volatile uint64_t hos_oot_gamedata_mgr;
 +        hos_oot_gamedata_mgr = oot_singleton(c, OOT_GAMEDATA_SLOT);
 +    }
@@ -246,10 +244,10 @@ index 39b0ff92..f49f0073 100644
  #else
      (void)c;
 diff --git a/host/nn_fs.c b/host/nn_fs.c
-index 25840fa3..98e06270 100644
+index f20cfee5..480c8bd0 100644
 --- a/host/nn_fs.c
 +++ b/host/nn_fs.c
-@@ -324,6 +324,16 @@ HLE(_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci) {
+@@ -343,6 +343,16 @@ HLE(_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci) {
      char path[HOS_FS_PATH];
      int writable = 0;
      const char *g = gstr(ARG(1));
@@ -263,11 +261,11 @@ index 25840fa3..98e06270 100644
 +            if (said < 10) said++, hos_log("voice: the game voices this line itself (%s)", g);
 +        }
 +    }
-     if (!host_path(g, path, sizeof path, &writable)) { hos_log("fs: OpenFile(%s): unknown mount", g); RET(R_PATH_NOT_FOUND); return; }
-     int want_write = (ARG(2) & 6) != 0;
-     if (want_write && !writable) { RET(R_PATH_NOT_FOUND); return; }
+     /* (mkw-recomp 16bc3bc: the host's file calls block, so the virtual core goes to another thread meanwhile, as
+        Horizon would run another while this one waits for the file system. OoT's ARes loaders held it up to 250 ms.)
+        (longshot, #1929) From before host_path: the first open of a button-prompt file builds it there (prompts.c,
 diff --git a/host/oot_text_size.c b/host/oot_text_size.c
-index c747cbdb..f900b92b 100644
+index 66dc08ee..b1f0d443 100644
 --- a/host/oot_text_size.c
 +++ b/host/oot_text_size.c
 @@ -47,6 +47,10 @@ void hos_oot_text_pane(Ctx *c, uint64_t anim) {
@@ -283,10 +281,10 @@ index c747cbdb..f900b92b 100644
         stepped, so that one's text is gone) */
 diff --git a/host/oot_voice.c b/host/oot_voice.c
 new file mode 100644
-index 00000000..1487d59d
+index 00000000..f62629e2
 --- /dev/null
 +++ b/host/oot_voice.c
-@@ -0,0 +1,971 @@
+@@ -0,0 +1,978 @@
 +/* (local) Read-aloud: the lines characters say in their dialogue box, spoken with Windows' own voice (SAPI), for a player
 +   who cannot read yet.
 +
@@ -772,12 +770,17 @@ index 00000000..1487d59d
 +    PlaySoundW(NULL, NULL, 0);
 +}
 +
++/* the renderer's back end: longshot_vk.dll (Longshot, v3.0.0 on), hookshot_vk.dll before */
++static HMODULE vk_module(void) {
++    HMODULE m = GetModuleHandleA("longshot_vk.dll");
++    return m ? m : GetModuleHandleA("hookshot_vk.dll");
++}
 +/* the renderer's "press next" rainbow frame (gpu/vk/vk_menu.cpp, mkwvk_voice_glow) */
 +static volatile int *glow_flag;
 +static int64_t glow_since;
 +static void glow(int on) {
 +    if (!glow_flag) {
-+        HMODULE m = GetModuleHandleA("hookshot_vk.dll");
++        HMODULE m = vk_module();
 +        if (m) glow_flag = (volatile int *)GetProcAddress(m, "mkwvk_voice_glow");
 +        if (!glow_flag) return;
 +    }
@@ -1194,8 +1197,10 @@ index 00000000..1487d59d
 +               choice << 4 | cursor) until the menu goes; no page glow while a menu is up */
 +            if (sig) {
 +                /* (armed once, as Link STARTS reading the options, not after he has finished: list_said is set the moment
-+                   speak() is called, so waiting for !speaking here held the chevron back for a whole utterance) */
-+                if (list_said && !pending_at && !choice_glow_on) choice_glow_on = 1, list_said = 0, hos_log("voice: choice arrow armed (%u choices)", choice_last + 1);   /* (armed once) */
++                   speak() is called, so waiting for !speaking here held the chevron back for a whole utterance. Talking to
++                   the lodge guard, that was his line plus "About the lodge..." plus Piper's synthesis before any cue
++                   appeared. The picture and the voice now arrive together) */
++                if (list_said && !pending_at && !choice_glow_on) choice_glow_on = 1, list_said = 0, hos_log("voice: choice arrow armed (%u choices)", choice_last + 1);
 +                if (choice_glow_on && rx_option(OPT_VOICE_GLOW, 1)) {
 +                    const int val = 0x100 | (int)choice_last << 4 | cursor;
 +                    if (!glow_flag || *glow_flag != val) {

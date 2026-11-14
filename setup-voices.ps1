@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
-Hookshot-Narrator: fetches Piper and the two natural voices into your built game folder.
+Longshot-Narrator: fetches Piper and the two natural voices into your built game folder.
 
 .DESCRIPTION
 Step 4 of the README, done for you. It downloads Piper (the speech engine that runs on your PC) and the
-two voice models, and puts them in the "piper" folder beside hookshot.exe, which is where the add-on
+two voice models, and puts them in the "piper" folder beside longshot.exe, which is where the add-on
 looks. About 157 MB in all.
 
-Run it AFTER you have built the game, and point it at the folder holding hookshot.exe:
+Run it AFTER you have built the game, and point it at the folder holding longshot.exe:
 
-    .\setup-voices.ps1 -Game "C:\Games\Hookshot"
+    .\setup-voices.ps1 -Game "C:\Games\Longshot"
 
 Already have some of it? Files that are present and the right size are left alone, so it is safe to run
 again if a download fails part way.
 
-    .\setup-voices.ps1 -Game "C:\Games\Hookshot" -Check     # say what is missing, download nothing
+    .\setup-voices.ps1 -Game "C:\Games\Longshot" -Check     # say what is missing, download nothing
 
 Read-aloud works without any of this by using the Windows voice; Piper is what makes it sound natural.
 #>
@@ -26,10 +26,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # (the progress bar makes Invoke-WebRequest far slower)
 
-# (the game folder: hookshot.exe for Hookshot v2.1.0, longshot.exe if you built its continuation)
-$exe = @('hookshot.exe', 'longshot.exe') | ForEach-Object { Join-Path $Game $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
+# (the game folder: longshot.exe; hookshot.exe too, for anyone still on a Hookshot build)
+$exe = @('longshot.exe', 'hookshot.exe') | ForEach-Object { Join-Path $Game $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $exe) {
-    Write-Host "No hookshot.exe or longshot.exe in $Game." -ForegroundColor Red
+    Write-Host "No longshot.exe or hookshot.exe in $Game." -ForegroundColor Red
     Write-Host 'Point -Game at your BUILT game folder (the one make_game.py wrote with --out), not the source.' -ForegroundColor Red
     exit 1
 }
@@ -118,7 +118,7 @@ Write-Host ''
 $left = @($items | Where-Object { -not (Have $_) })
 if ($left.Count -eq 0) {
     Write-Host 'Done. Start the game and talk to anyone.' -ForegroundColor Green
-    Write-Host 'If you still hear the Windows voice, hookshot_log.txt beside the game says why.' -ForegroundColor DarkGray
+    Write-Host 'If you still hear the Windows voice, longshot_log.txt beside the game says why.' -ForegroundColor DarkGray
 }
 else {
     Write-Host ('Still missing: {0}. Run this again.' -f ($left.Name -join ', ')) -ForegroundColor Red

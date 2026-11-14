@@ -12,8 +12,6 @@ Longshot-Narrator is a source patch. It speaks every dialogue box aloud as it ap
 that suits them, and reads Link's reply choices in a voice of his own. It was written for a player who cannot read
 yet, and it suits anyone who would rather listen.
 
-![The lodge guard's question with Link's choices, read aloud](docs/screenshots/choice-menu.webp)
-
 > [!IMPORTANT]
 > This repository contains **no game files, no keys, no executable and no voice recordings**. You need Longshot,
 > built from your own copy of the game. All speech is generated on your PC as you play.
@@ -45,8 +43,6 @@ yet, and it suits anyone who would rather listen.
 - **No repeats, and no silence.** A line you just heard is not read again when a conversation loops back to it, but
   talking to someone a second time starts afresh, so you always hear their opening line.
 - **The game's own voice acting is left alone.** Where the game voices a line itself, the narrator stays quiet.
-
-![A number the game fills in, read as part of the line](docs/screenshots/filled-in-number.webp)
 
 ## Settings
 
